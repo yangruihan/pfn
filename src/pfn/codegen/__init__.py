@@ -1,1 +1,3 @@
-"""Python code generator."""
+from pfn.codegen.codegen import CodeGenerator
+
+__all__ = ["CodeGenerator"]
