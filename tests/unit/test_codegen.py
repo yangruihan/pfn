@@ -91,8 +91,9 @@ class TestCodeGeneratorFunctions:
         tokens = Lexer("def add(x, y) = x + y").tokenize()
         module = Parser(tokens).parse()
         code = CodeGenerator().generate_module(module)
-        assert "def add(x, y):" in code
-        assert "return x + y" in code
+        assert "def add(x):" in code
+        assert "lambda y:" in code
+        assert "x + y" in code
 
 
 class TestCodeGeneratorIf:
