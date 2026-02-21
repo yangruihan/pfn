@@ -25,6 +25,13 @@ class CodeGenerator:
     def _gen_def_decl(self, decl: ast.DefDecl) -> str:
         params_str = ", ".join(p.name for p in decl.params)
         body_code = self._gen_expr(decl.body)
+
+        if len(decl.params) > 1:
+            inner_body = body_code
+            for param in reversed(decl.params[1:]):
+                inner_body = f"lambda {param.name}: {inner_body}"
+            return f"def {decl.name}({decl.params[0].name}): return {inner_body}"
+
         return f"def {decl.name}({params_str}):\n    return {body_code}"
 
     def _gen_type_decl(self, decl: ast.TypeDecl) -> str:
