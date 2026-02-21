@@ -30,9 +30,15 @@ class CodeGenerator:
             inner_body = body_code
             for param in reversed(decl.params[1:]):
                 inner_body = f"lambda {param.name}: {inner_body}"
-            return f"def {decl.name}({decl.params[0].name}): return {inner_body}"
+            func_def = f"def {decl.name}({decl.params[0].name}): return {inner_body}"
+        else:
+            func_def = f"def {decl.name}({params_str}):\n    return {body_code}"
 
-        return f"def {decl.name}({params_str}):\n    return {body_code}"
+        if decl.is_exported:
+            export_name = decl.export_name or decl.name
+            return f"{func_def}\n\n{export_name} = {decl.name}"
+
+        return func_def
 
     def _gen_type_decl(self, decl: ast.TypeDecl) -> str:
         if decl.is_record:
@@ -138,6 +144,8 @@ class CodeGenerator:
             return self._gen_field_access(expr)
         if isinstance(expr, ast.IndexAccess):
             return self._gen_index_access(expr)
+        if isinstance(expr, ast.DoNotation):
+            return self._gen_do(expr)
         return ""
 
     def _gen_lambda(self, expr: ast.Lambda) -> str:
@@ -256,3 +264,10 @@ class CodeGenerator:
         expr_code = self._gen_expr(expr.expr)
         index_code = self._gen_expr(expr.index)
         return f"{expr_code}[{index_code}]"
+
+    def _gen_do(self, expr: ast.DoNotation) -> str:
+        result = self._gen_expr(expr.body)
+        for binding in reversed(expr.bindings):
+            value_code = self._gen_expr(binding.value)
+            result = f"(lambda {binding.name}: {result})({value_code})"
+        return result

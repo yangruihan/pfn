@@ -17,6 +17,11 @@ from pfn.types import (
     Type,
     TypeEnv,
 )
+from pfn.typechecker.classes import (
+    ClassContext,
+    get_default_context,
+    resolve_instance,
+)
 
 
 class TypeError(Exception):
@@ -24,9 +29,12 @@ class TypeError(Exception):
 
 
 class TypeChecker:
-    def __init__(self, env: TypeEnv | None = None):
+    def __init__(
+        self, env: TypeEnv | None = None, class_ctx: ClassContext | None = None
+    ):
         self.env = env or TypeEnv()
         self.var_counter = 0
+        self.class_ctx = class_ctx or get_default_context()
 
     def fresh_var(self) -> TVar:
         self.var_counter += 1
@@ -387,3 +395,19 @@ class TypeChecker:
             return subst, TTuple(tuple(types))
 
         raise TypeError(f"Unknown pattern type: {type(pattern)}")
+
+    def check_instance(self, class_name: str, type_: Type) -> bool:
+        type_name = str(type_)
+        if isinstance(type_, TVar):
+            return False
+        inst = resolve_instance(self.class_ctx, class_name, type_name)
+        return inst is not None
+
+    def get_instance_method(self, class_name: str, type_: Type, method_name: str):
+        type_name = str(type_)
+        if isinstance(type_, TVar):
+            return None
+        inst = resolve_instance(self.class_ctx, class_name, type_name)
+        if inst:
+            return inst.methods.get(method_name)
+        return None

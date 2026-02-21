@@ -206,6 +206,18 @@ class LetFunc(Expr):
 
 
 @dataclass
+class DoNotation(Expr):
+    bindings: list[DoBinding]
+    body: Expr
+
+
+@dataclass
+class DoBinding:
+    name: str
+    value: Expr
+
+
+@dataclass
 class Match(Expr):
     scrutinee: Expr
     cases: list[MatchCase]

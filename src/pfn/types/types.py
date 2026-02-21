@@ -104,6 +104,27 @@ class TCon(Type):
         return self.name
 
 
+@dataclass(frozen=True)
+class TIO(Type):
+    """IO effect type"""
+
+    inner: Type
+
+    def __str__(self) -> str:
+        return f"IO {self.inner}"
+
+
+@dataclass(frozen=True)
+class TState(Type):
+    """State effect type"""
+
+    state: Type
+    inner: Type
+
+    def __str__(self) -> str:
+        return f"State {self.state} {self.inner}"
+
+
 # ============ Type Classes ============
 
 
@@ -128,7 +149,7 @@ class ClassInstance:
 
     class_name: str
     type_: Type
-    methods: dict[str, Expr]
+    methods: dict[str, Type]
 
     def __str__(self) -> str:
         return f"impl {self.class_name} {self.type_}"

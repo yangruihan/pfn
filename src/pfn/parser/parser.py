@@ -316,7 +316,26 @@ class Parser:
                 return ast.LetFunc(name=name, params=params, value=value, body=body)
             return ast.Let(name=name, value=value, body=body)
 
+        if self._match(TokenType.KW_DO):
+            return self._parse_do()
+
         return self._parse_if()
+
+    def _parse_do(self) -> ast.DoNotation:
+        bindings = []
+        while not self._check(TokenType.KW_IN):
+            name_token = self._expect(
+                TokenType.IDENT, "Expected variable name in do binding"
+            )
+            name = name_token.value
+            self._match(TokenType.LEFT_ARROW)
+            value = self._parse_expr()
+            bindings.append(ast.DoBinding(name=name, value=value))
+
+        self._match(TokenType.KW_IN)
+        body = self._parse_expr()
+
+        return ast.DoNotation(bindings=bindings, body=body)
 
     def _parse_if(self) -> ast.Expr:
         if self._match(TokenType.KW_IF):
