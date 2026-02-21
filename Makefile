@@ -19,38 +19,45 @@ help:
 	@echo "  demo        Run full demo"
 	@echo "  doc         Serve documentation locally"
 
+PYTHON := .venv/bin/python3.13
+PYTEST := .venv/bin/pytest
+PIP := .venv/bin/pip
+
 install:
-	pip install -e .
+	$(PIP) install -e .
 
 dev:
-	pip install -e ".[dev]"
+	$(PIP) install -e ".[dev]"
+
+PYTHON := .venv/bin/python3.13
+PYTEST := .venv/bin/pytest
 
 test:
-	PYTHONPATH=src pytest tests/unit -v
+	PYTHONPATH=src $(PYTEST) tests/unit -v
 
 test-cov:
-	PYTHONPATH=src pytest tests/unit -v --cov=src/pfn --cov-report=term-missing
+	PYTHONPATH=src $(PYTEST) tests/unit -v --cov=src/pfn --cov-report=term-missing
 
 test-all:
-	PYTHONPATH=src pytest tests/ -v --cov=src/pfn --cov-report=term-missing
+	PYTHONPATH=src $(PYTEST) tests/ -v --cov=src/pfn --cov-report=term-missing
 
 lint:
-	ruff check src tests
+	$(PYTHON) -m ruff check src tests
 
 format:
-	ruff format src tests
+	$(PYTHON) -m ruff format src tests
 
 format-check:
-	ruff format --check src tests
+	$(PYTHON) -m ruff format --check src tests
 
 typecheck:
-	PYTHONPATH=src mypy src/pfn
+	PYTHONPATH=src $(PYTHON) -m mypy src/pfn
 
 check: lint format-check typecheck test
 	@echo "All checks passed!"
 
 build:
-	python -m build
+	$(PYTHON) -m build
 
 clean:
 	rm -rf build/
@@ -67,23 +74,23 @@ clean:
 	find . -type f -name "*.pyc" -delete
 
 run:
-	PYTHONPATH=src python3 -c "from pfn.cli import main; main(['run', 'examples/hello.pfn'])"
+	PYTHONPATH=src $(PYTHON) -c "from pfn.cli import main; main(['run', 'examples/hello.pfn'])"
 
 demo:
 	@echo "=== Pfn Language Demo ==="
 	@echo ""
 	@echo "1. Hello World:"
-	PYTHONPATH=src python3 -c "from pfn.cli import main; main(['run', 'examples/hello.pfn'])"
+	PYTHONPATH=src $(PYTHON) -c "from pfn.cli import main; main(['run', 'examples/hello.pfn'])"
 	@echo ""
 	@echo "2. Type Checking:"
-	PYTHONPATH=src python3 -c "from pfn.cli import main; main(['check', 'examples/typed.pfn'])"
+	PYTHONPATH=src $(PYTHON) -c "from pfn.cli import main; main(['check', 'examples/typed.pfn'])"
 	@echo ""
 	@echo "3. Generated Python:"
-	PYTHONPATH=src python3 -c "from pfn.cli import main; main(['compile', 'examples/typed.pfn'])"
+	PYTHONPATH=src $(PYTHON) -c "from pfn.cli import main; main(['compile', 'examples/typed.pfn'])"
 
 doc:
 	@echo "Serving docs at http://localhost:8000"
-	cd docs && python3 -m http.server 8000
+	cd docs && $(PYTHON) -m http.server 8000
 
 ci: check
 	@echo "CI passed!"
