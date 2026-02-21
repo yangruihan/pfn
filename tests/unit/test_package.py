@@ -1,6 +1,3 @@
-import pytest
-
-
 def test_version_exists():
     from pfn import __version__
 
