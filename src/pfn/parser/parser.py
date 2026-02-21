@@ -69,6 +69,32 @@ class Parser:
     def _parse_declaration(self) -> ast.Decl | None:
         if self._match(TokenType.KW_DEF):
             return self._parse_def()
+        if self._match(TokenType.AT):
+            if self._check(TokenType.IDENT) and str(self._current().value) == "py":
+                self.pos += 1
+                if self._match(TokenType.DOT):
+                    if (
+                        self._check(TokenType.IDENT)
+                        and str(self._current().value) == "export"
+                    ):
+                        self.pos += 1
+                        export_name = None
+                        if self._match(TokenType.LPAREN):
+                            name_token = self._expect(
+                                TokenType.STRING, "Expected export name"
+                            )
+                            export_name = (
+                                str(name_token.value) if name_token.value else None
+                            )
+                            self._expect(TokenType.RPAREN, "Expected ')'")
+                        self._expect(
+                            TokenType.KW_DEF, "Expected 'def' after @py.export"
+                        )
+                        def_decl = self._parse_def()
+                        def_decl.is_exported = True
+                        def_decl.export_name = export_name
+                        return def_decl
+            self.pos -= 1
         if self._match(TokenType.KW_TYPE):
             return self._parse_type()
         if self._match(TokenType.KW_IMPORT):
@@ -82,6 +108,28 @@ class Parser:
         raise ParseError(f"Unexpected token: {self._current().type}", self._current())
 
     def _parse_def(self) -> ast.DefDecl:
+        is_exported = False
+        export_name = None
+
+        if self._match(TokenType.AT):
+            if self._check(TokenType.IDENT) and str(self._current().value) == "py":
+                self.pos += 1
+                if self._match(TokenType.DOT):
+                    if (
+                        self._check(TokenType.IDENT)
+                        and str(self._current().value) == "export"
+                    ):
+                        self.pos += 1
+                        is_exported = True
+                        if self._match(TokenType.LPAREN):
+                            name_token = self._expect(
+                                TokenType.STRING, "Expected export name"
+                            )
+                            export_name = (
+                                str(name_token.value) if name_token.value else None
+                            )
+                            self._expect(TokenType.RPAREN, "Expected ')'")
+
         name_token = self._expect(TokenType.IDENT, "Expected function name")
         name = name_token.value
 
@@ -100,7 +148,14 @@ class Parser:
         self._expect(TokenType.EQUALS, "Expected '=' after function signature")
         body = self._parse_expr()
 
-        return ast.DefDecl(name=name, params=params, return_type=return_type, body=body)
+        return ast.DefDecl(
+            name=name,
+            params=params,
+            return_type=return_type,
+            body=body,
+            is_exported=is_exported,
+            export_name=export_name,
+        )
 
     def _parse_param(self) -> ast.Param:
         name_token = self._expect(TokenType.IDENT, "Expected parameter name")

@@ -198,6 +198,12 @@ class Lexer:
                     "!",
                     self._span_from(start_pos, start_line, start_col),
                 )
+        elif char == "@":
+            self._add_token(
+                TokenType.AT,
+                "@",
+                self._span_from(start_pos, start_line, start_col),
+            )
         elif char == "<":
             if self._match("="):
                 self._add_token(

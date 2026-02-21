@@ -279,6 +279,8 @@ class DefDecl(Decl):
     params: list[Param]
     body: Expr
     return_type: TypeRef | None = None
+    is_exported: bool = False
+    export_name: str | None = None
 
 
 @dataclass

@@ -63,6 +63,7 @@ class TokenType(Enum):
     LEFT_ARROW = auto()
     DOUBLE_PLUS = auto()
     BANG = auto()
+    AT = auto()
 
     # Punctuation
     LPAREN = auto()
