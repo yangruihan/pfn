@@ -149,15 +149,17 @@ class Parser:
 
     def _parse_import(self) -> ast.ImportDecl:
         is_python = False
-        if self._match(TokenType.KW_IMPORT):
-            pass
+
+        if self._check(TokenType.IDENT) and str(self._current().value) == "python":
+            is_python = True
+            self.pos += 1
 
         if self._match(TokenType.IDENT):
             module_parts = [self.tokens[self.pos - 1].value]
             while self._match(TokenType.DOT):
                 part = self._expect(TokenType.IDENT, "Expected module part")
                 module_parts.append(part.value)
-            module_name = ".".join(module_parts)
+            module_name = ".".join([str(p) for p in module_parts])
         else:
             raise ParseError("Expected module name", self._current())
 
@@ -166,7 +168,7 @@ class Parser:
 
         if self._match(TokenType.KW_AS):
             alias_token = self._expect(TokenType.IDENT, "Expected alias")
-            alias = alias_token.value
+            alias = str(alias_token.value)
 
         return ast.ImportDecl(
             module=module_name, alias=alias, exposing=exposing, is_python=is_python

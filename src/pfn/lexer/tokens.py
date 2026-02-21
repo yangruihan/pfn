@@ -28,6 +28,7 @@ class TokenType(Enum):
     KW_IMPORT = auto()
     KW_EXPORT = auto()
     KW_MODULE = auto()
+    KW_AS = auto()
     KW_EFFECT = auto()
     KW_DO = auto()
     KW_FORALL = auto()
@@ -118,6 +119,7 @@ KEYWORDS: dict[str, TokenType] = {
     "import": TokenType.KW_IMPORT,
     "export": TokenType.KW_EXPORT,
     "module": TokenType.KW_MODULE,
+    "as": TokenType.KW_AS,
     "effect": TokenType.KW_EFFECT,
     "do": TokenType.KW_DO,
     "forall": TokenType.KW_FORALL,
