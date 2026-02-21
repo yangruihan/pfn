@@ -91,6 +91,50 @@ class TRecord(Type):
 
 
 @dataclass(frozen=True)
+class TCon(Type):
+    """Type constructor (for type classes)"""
+
+    name: str
+    args: tuple[Type, ...] = ()
+
+    def __str__(self) -> str:
+        if self.args:
+            args_str = ", ".join(str(a) for a in self.args)
+            return f"{self.name} {args_str}"
+        return self.name
+
+
+# ============ Type Classes ============
+
+
+@dataclass(frozen=True)
+class TypeClass:
+    """Type class definition"""
+
+    name: str
+    params: tuple[str, ...]
+    methods: dict[str, Type]
+    superclasses: tuple[str, ...] = ()
+
+    def __str__(self) -> str:
+        params_str = " ".join(self.params) if self.params else ""
+        methods_str = ", ".join(f"{k}: {v}" for k, v in self.methods.items())
+        return f"interface {self.name} {params_str} where {methods_str}"
+
+
+@dataclass(frozen=True)
+class ClassInstance:
+    """Type class instance"""
+
+    class_name: str
+    type_: Type
+    methods: dict[str, Expr]
+
+    def __str__(self) -> str:
+        return f"impl {self.class_name} {self.type_}"
+
+
+@dataclass(frozen=True)
 class Scheme:
     vars: tuple[str, ...]
     type: Type

@@ -316,6 +316,52 @@ class ExportDecl(Decl):
     names: list[str]
 
 
+@dataclass
+class InterfaceDecl(Decl):
+    """Type class interface definition"""
+
+    name: str
+    params: list[str] = field(default_factory=list)
+    methods: list[InterfaceMethod] = field(default_factory=list)
+    superclasses: list[str] = field(default_factory=list)
+
+
+@dataclass
+class InterfaceMethod:
+    name: str
+    type: TypeRef
+
+
+@dataclass
+class ImplDecl(Decl):
+    """Type class instance implementation"""
+
+    class_name: str
+    type_ref: TypeRef
+    methods: list[ImplMethod] = field(default_factory=list)
+
+
+@dataclass
+class ImplMethod:
+    name: str
+    params: list[Param]
+    body: Expr
+
+
+@dataclass
+class EffectDecl(Decl):
+    """Effect declaration"""
+
+    name: str
+    operations: list[EffectOp] = field(default_factory=list)
+
+
+@dataclass
+class EffectOp:
+    name: str
+    type: TypeRef
+
+
 # ============ Module ============
 
 

@@ -3,6 +3,7 @@ from pfn.types.types import (
     Subst,
     TBool,
     TChar,
+    TCon,
     TFloat,
     TFun,
     TInt,
@@ -13,7 +14,9 @@ from pfn.types.types import (
     TUnit,
     TVar,
     Type,
+    TypeClass,
     TypeEnv,
+    ClassInstance,
 )
 
 __all__ = [
@@ -29,7 +32,10 @@ __all__ = [
     "TList",
     "TTuple",
     "TRecord",
+    "TCon",
     "Scheme",
     "Subst",
     "TypeEnv",
+    "TypeClass",
+    "ClassInstance",
 ]

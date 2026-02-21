@@ -73,6 +73,12 @@ class Parser:
             return self._parse_type()
         if self._match(TokenType.KW_IMPORT):
             return self._parse_import()
+        if self._match(TokenType.KW_INTERFACE):
+            return self._parse_interface()
+        if self._match(TokenType.KW_IMPL):
+            return self._parse_impl()
+        if self._match(TokenType.KW_EFFECT):
+            return self._parse_effect()
         raise ParseError(f"Unexpected token: {self._current().type}", self._current())
 
     def _parse_def(self) -> ast.DefDecl:
@@ -552,3 +558,91 @@ class Parser:
 
         self._expect(TokenType.RBRACE, "Expected '}'")
         return ast.RecordLit(fields=fields)
+
+    def _parse_interface(self) -> ast.InterfaceDecl:
+        name_token = self._expect(TokenType.IDENT, "Expected interface name")
+        name = name_token.value
+
+        params = []
+        if self._check(TokenType.IDENT):
+            params.append(self._current().value)
+            self.pos += 1
+            while self._check(TokenType.IDENT):
+                params.append(self._current().value)
+                self.pos += 1
+
+        self._expect(TokenType.KW_WHERE, "Expected 'where'")
+        self._expect(TokenType.LBRACE, "Expected '{'")
+
+        methods = []
+        while not self._check(TokenType.RBRACE):
+            method_name_token = self._expect(TokenType.IDENT, "Expected method name")
+            self._expect(TokenType.COLON, "Expected ':'")
+            method_type = self._parse_type_ref()
+            methods.append(
+                ast.InterfaceMethod(name=method_name_token.value, type=method_type)
+            )
+            if not self._match(TokenType.COMMA):
+                break
+
+        self._expect(TokenType.RBRACE, "Expected '}'")
+        return ast.InterfaceDecl(name=name, params=params, methods=methods)
+
+    def _parse_impl(self) -> ast.ImplDecl:
+        class_name_token = self._expect(TokenType.IDENT, "Expected class name")
+        class_name = class_name_token.value
+
+        type_ref = self._parse_type_ref()
+
+        self._expect(TokenType.KW_WHERE, "Expected 'where'")
+        self._expect(TokenType.LBRACE, "Expected '{'")
+
+        methods = []
+        while not self._check(TokenType.RBRACE):
+            method_name_token = self._expect(TokenType.IDENT, "Expected method name")
+            params = []
+            if self._match(TokenType.LPAREN):
+                if not self._check(TokenType.RPAREN):
+                    params.append(self._parse_param())
+                    while self._match(TokenType.COMMA):
+                        params.append(self._parse_param())
+                self._expect(TokenType.RPAREN, "Expected ')'")
+            else:
+                while self._check(TokenType.IDENT):
+                    param_token = self._expect(
+                        TokenType.IDENT, "Expected parameter name"
+                    )
+                    params.append(ast.Param(name=str(param_token.value)))
+            self._expect(TokenType.EQUALS, "Expected '='")
+            body = self._parse_expr()
+            methods.append(
+                ast.ImplMethod(name=method_name_token.value, params=params, body=body)
+            )
+            if not self._match(TokenType.COMMA):
+                break
+
+        self._expect(TokenType.RBRACE, "Expected '}'")
+        return ast.ImplDecl(class_name=class_name, type_ref=type_ref, methods=methods)
+
+    def _parse_effect(self) -> ast.EffectDecl:
+        name_token = self._expect(TokenType.IDENT, "Expected effect name")
+        name = name_token.value
+
+        type_param = None
+        if self._check(TokenType.IDENT):
+            type_param = str(self._current().value)
+            self.pos += 1
+
+        self._expect(TokenType.LBRACE, "Expected '{'")
+
+        operations = []
+        while not self._check(TokenType.RBRACE):
+            op_name_token = self._expect(TokenType.IDENT, "Expected operation name")
+            self._expect(TokenType.COLON, "Expected ':'")
+            op_type = self._parse_type_ref()
+            operations.append(ast.EffectOp(name=op_name_token.value, type=op_type))
+            if not self._match(TokenType.COMMA):
+                break
+
+        self._expect(TokenType.RBRACE, "Expected '}'")
+        return ast.EffectDecl(name=name, operations=operations)
