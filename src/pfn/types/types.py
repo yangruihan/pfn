@@ -125,6 +125,27 @@ class TState(Type):
         return f"State {self.state} {self.inner}"
 
 
+@dataclass(frozen=True)
+class TGADT(Type):
+    """GADT type representation"""
+
+    name: str
+    params: tuple[Type, ...]
+    constructors: dict[str, Type]
+
+    def __str__(self) -> str:
+        params_str = ", ".join(str(p) for p in self.params)
+        return f"GADT {self.name} {params_str}"
+
+
+@dataclass(frozen=True)
+class GADTConstructor:
+    """GADT constructor with type signature"""
+
+    name: str
+    type: Type
+
+
 # ============ Type Classes ============
 
 

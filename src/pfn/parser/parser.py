@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pfn.lexer import Token, TokenType
 from pfn.parser import ast
+from pfn.types import TFun
 
 
 class ParseError(Exception):
@@ -97,6 +98,8 @@ class Parser:
             self.pos -= 1
         if self._match(TokenType.KW_TYPE):
             return self._parse_type()
+        if self._match(TokenType.KW_GADT):
+            return self._parse_gadt()
         if self._match(TokenType.KW_IMPORT):
             return self._parse_import()
         if self._match(TokenType.KW_INTERFACE):
@@ -202,6 +205,38 @@ class Parser:
             constructors.append(ast.Constructor(name=ctor_name, fields=ctor_fields))
 
         return ast.TypeDecl(name=name, params=params, constructors=constructors)
+
+    def _parse_gadt(self) -> ast.TypeDecl:
+        name_token = self._expect(TokenType.IDENT, "Expected type name")
+        name = str(name_token.value)
+
+        params = []
+        while self._check(TokenType.IDENT):
+            params.append(str(self._current().value))
+            self.pos += 1
+
+        self._expect(TokenType.KW_WHERE, "Expected 'where'")
+        self._expect(TokenType.LBRACE, "Expected '{'")
+
+        constructors = []
+        while not self._check(TokenType.RBRACE):
+            ctor_name_token = self._expect(TokenType.IDENT, "Expected constructor name")
+            ctor_name = str(ctor_name_token.value)
+
+            ctor_params = []
+            while self._check(TokenType.IDENT):
+                param_type = self._parse_type_ref()
+                ctor_params.append(param_type)
+
+            constructors.append(ast.Constructor(name=ctor_name, fields=ctor_params))
+            if not self._match(TokenType.COMMA):
+                break
+
+        self._expect(TokenType.RBRACE, "Expected '}'")
+
+        type_decl = ast.TypeDecl(name=name, params=params, constructors=constructors)
+        type_decl.is_gadt = True
+        return type_decl
 
     def _peek(self) -> Token:
         if self.pos + 1 >= len(self.tokens):

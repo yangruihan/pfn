@@ -37,6 +37,7 @@ class TokenType(Enum):
     KW_FAMILY = auto()
     KW_WHERE = auto()
     KW_FN = auto()
+    KW_GADT = auto()
     TRUE = auto()
     FALSE = auto()
 
@@ -115,6 +116,7 @@ KEYWORDS: dict[str, TokenType] = {
     "match": TokenType.KW_MATCH,
     "with": TokenType.KW_WITH,
     "type": TokenType.KW_TYPE,
+    "gadt": TokenType.KW_GADT,
     "interface": TokenType.KW_INTERFACE,
     "impl": TokenType.KW_IMPL,
     "import": TokenType.KW_IMPORT,

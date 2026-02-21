@@ -302,6 +302,14 @@ class TypeDecl(Decl):
     constructors: list[Constructor] = field(default_factory=list)
     is_record: bool = False
     record_fields: list[tuple[str, TypeRef]] = field(default_factory=list)
+    is_gadt: bool = False
+
+
+@dataclass
+class GADTConstructor:
+    name: str
+    params: list[TypeRef]
+    result_type: TypeRef
 
 
 @dataclass
