@@ -308,6 +308,21 @@ class TypeChecker:
 
             return subst, result_type
 
+        if isinstance(expr, ast.FieldAccess):
+            subst, expr_type = self._infer(expr.expr, subst)
+            result_type = self.fresh_var()
+            return subst, result_type
+
+        if isinstance(expr, ast.IndexAccess):
+            subst, expr_type = self._infer(expr.expr, subst)
+            subst, index_type = self._infer(expr.index, subst)
+            new_subst = subst.unify(index_type, TInt())
+            if new_subst is None:
+                raise TypeError(f"Index must be Int")
+            subst = new_subst.compose(subst)
+            result_type = self.fresh_var()
+            return subst, result_type
+
         raise TypeError(f"Unknown expression type: {type(expr)}")
 
     def _infer_pattern(
