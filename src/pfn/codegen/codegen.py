@@ -211,11 +211,12 @@ class CodeGenerator:
         return ""
 
     def _gen_lambda(self, expr: ast.Lambda) -> str:
-        params_str = ", ".join(p.name for p in expr.params)
         body_code = self._gen_expr(expr.body)
-        if len(expr.params) == 1:
-            return f"lambda {params_str}: {body_code}"
-        return f"lambda {params_str}: {body_code}"
+        result = body_code
+        for param in reversed(expr.params):
+            safe_name = self._safe_name(param.name)
+            result = f"lambda {safe_name}: {result}"
+        return result
 
     def _gen_app(self, expr: ast.App) -> str:
         func_code = self._gen_expr(expr.func)
@@ -267,10 +268,25 @@ class CodeGenerator:
         return f"(lambda __let_val: {body_code} if {pattern_check} else None)({value_code})"
 
     def _gen_let_func(self, expr: ast.LetFunc) -> str:
-        params_str = ", ".join(p.name for p in expr.params)
+        safe_name = self._safe_name(expr.name)
         value_code = self._gen_expr(expr.value)
         body_code = self._gen_expr(expr.body)
-        return f"(lambda {params_str}: {body_code})({value_code})"
+
+        import re
+
+        pattern = r"\b" + re.escape(expr.name) + r"\b"
+        is_recursive = bool(re.search(pattern, value_code))
+
+        curried_lambda = value_code
+        for param in reversed(expr.params):
+            curried_lambda = f"lambda {self._safe_name(param.name)}: {curried_lambda}"
+
+        if is_recursive:
+            value_code_with_cell = re.sub(pattern, "__cell[0]", curried_lambda)
+            body_code_with_cell = re.sub(pattern, "__cell[0]", body_code)
+            return f"(lambda __cell: (__cell.__setitem__(0, ({value_code_with_cell})) or {body_code_with_cell}))([None])"
+        else:
+            return f"(lambda {safe_name}: {body_code})({curried_lambda})"
 
     def _gen_match(self, expr: ast.Match) -> str:
         scrutinee_code = self._gen_expr(expr.scrutinee)
