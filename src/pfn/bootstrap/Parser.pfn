@@ -1,0 +1,126 @@
+-- Pfn Bootstrap: Parser
+-- Syntax analyzer for Pfn language
+
+module Bootstrap.Parser
+
+import Bootstrap.Token (Token, TokenType, Span, TokenValue(..))
+import Bootstrap.AST (..)
+
+-- ============ Error Handling ============
+
+type ParseError = {
+  message: String,
+  token: Token
+}
+
+def parseError(message: String, token: Token) : ParseError =
+  { message: message, token: token }
+
+def errorToString(err: ParseError) : String =
+  err.message ++ " at " ++ spanToString(err.token.span)
+
+def spanToString(span: Span) : String =
+  "line " ++ toString(span.line) ++ ", column " ++ toString(span.column)
+
+-- ============ Parser State ============
+
+type ParserState = {
+  tokens: List Token,
+  pos: Int
+}
+
+def initParser(tokens: List Token) : ParserState =
+  { tokens: tokens, pos: 0 }
+
+-- ============ Precedence Table ============
+
+-- Operator precedence (lower number = lower precedence)
+def precedence : Dict TokenType Int =
+  Dict.fromList [
+    (DOUBLE_PIPE, 1),    -- ||
+    (DOUBLE_AMP, 2),     -- &&
+    (EQ, 3),             -- ==
+    (NEQ, 3),            -- !=
+    (LT, 3),             -- <
+    (LE, 3),             -- <=
+    (GT, 3),             -- >
+    (GE, 3),             -- >=
+    (DOUBLE_COLON, 4),   -- ::
+    (DOUBLE_PLUS, 5),    -- ++
+    (PLUS, 6),           -- +
+    (MINUS, 6),          -- -
+    (STAR, 7),           -- *
+    (SLASH, 7),          -- /
+    (PERCENT, 7),        -- %
+    (FAT_ARROW, 8)       -- =>
+  ]
+
+def getPrecedence(tt: TokenType) : Int =
+  match Dict.lookup(tt, precedence) with
+    Just(p) -> p
+    Nothing -> 0
+
+-- ============ Token Access Helpers ============
+
+-- Get current token
+def current(state: ParserState) : Token =
+  match List.getAt(state.pos, state.tokens) with
+    Just(t) -> t
+    Nothing -> 
+      -- Return last token (EOF) if out of bounds
+      match List.last(state.tokens) with
+        Just(t) -> t
+        Nothing -> { tokenType: EOF, value: NoValue, span: { start: 0, end: 0, line: 1, column: 1 } }
+
+-- Peek at next token
+def peek(state: ParserState) : Token =
+  match List.getAt(state.pos + 1, state.tokens) with
+    Just(t) -> t
+    Nothing -> current(state)
+
+-- Check if current token matches any of the given types
+def check(state: ParserState, types: List TokenType) : Bool =
+  List.member(current(state).tokenType, types)
+
+-- Try to match and consume a token of the given types
+def matchToken(state: ParserState, types: List TokenType) : (Maybe Token, ParserState) =
+  if check(state, types) then
+    (Just(current(state)), { state with pos = state.pos + 1 })
+  else
+    (Nothing, state)
+
+-- Expect a token of the given type, raise error if not found
+def expect(state: ParserState, tt: TokenType, message: String) : Result ParseError (Token, ParserState) =
+  if check(state, [tt]) then
+    let (mtok, newState) = matchToken(state, [tt])
+    in match mtok with
+      Just(t) -> Ok((t, newState))
+      Nothing -> Err(parseError(message, current(state)))
+  else
+    Err(parseError(message, current(state)))
+
+-- Advance position by one
+def advance(state: ParserState) : ParserState =
+  { state with pos = state.pos + 1 }
+
+-- ============ Token Value Extraction ============
+
+def getTokenString(token: Token) : String =
+  match token.value with
+    StringValue(s) -> s
+    _ -> ""
+
+def getTokenInt(token: Token) : Int =
+  match token.value with
+    IntValue(i) -> i
+    _ -> 0
+
+def getTokenFloat(token: Token) : Float =
+  match token.value with
+    FloatValue(f) -> f
+    _ -> 0.0
+
+def getTokenChar(token: Token) : Char =
+  match token.value with
+    CharValue(c) -> c
+    _ -> '\0'
