@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -92,22 +93,18 @@ class TRecord(Type):
 
 @dataclass(frozen=True)
 class TCon(Type):
-    """Type constructor (for type classes)"""
-
     name: str
     args: tuple[Type, ...] = ()
 
     def __str__(self) -> str:
         if self.args:
-            args_str = ", ".join(str(a) for a in self.args)
+            args_str = " ".join(str(a) for a in self.args)
             return f"{self.name} {args_str}"
         return self.name
 
 
 @dataclass(frozen=True)
 class TIO(Type):
-    """IO effect type"""
-
     inner: Type
 
     def __str__(self) -> str:
@@ -116,8 +113,6 @@ class TIO(Type):
 
 @dataclass(frozen=True)
 class TState(Type):
-    """State effect type"""
-
     state: Type
     inner: Type
 
@@ -127,32 +122,74 @@ class TState(Type):
 
 @dataclass(frozen=True)
 class TGADT(Type):
-    """GADT type representation"""
-
     name: str
     params: tuple[Type, ...]
     constructors: dict[str, Type]
 
     def __str__(self) -> str:
-        params_str = ", ".join(str(p) for p in self.params)
+        params_str = " ".join(str(p) for p in self.params)
         return f"GADT {self.name} {params_str}"
 
 
 @dataclass(frozen=True)
-class GADTConstructor:
-    """GADT constructor with type signature"""
+class TRowPoly(Type):
+    fields: dict[str, Type]
+    rest: str | None = None
 
+    def __str__(self) -> str:
+        fields = ", ".join(f"{k}: {v}" for k, v in self.fields.items())
+        if self.rest:
+            return f"{{{fields} | {self.rest}}}"
+        return f"{{{fields}}}"
+
+
+@dataclass(frozen=True)
+class TForall(Type):
+    vars: tuple[str, ...]
+    inner: Type
+
+    def __str__(self) -> str:
+        vars_str = " ".join(self.vars)
+        return f"forall {vars_str}. {self.inner}"
+
+
+@dataclass(frozen=True)
+class TExists(Type):
+    vars: tuple[str, ...]
+    inner: Type
+
+    def __str__(self) -> str:
+        vars_str = " ".join(self.vars)
+        return f"exists {vars_str}. {self.inner}"
+
+
+@dataclass(frozen=True)
+class TConstraint(Type):
+    class_name: str
+    type_: Type
+
+    def __str__(self) -> str:
+        return f"{self.class_name} {self.type_}"
+
+
+@dataclass(frozen=True)
+class TQualified(Type):
+    constraints: tuple[TConstraint, ...]
+    inner: Type
+
+    def __str__(self) -> str:
+        cs = ", ".join(str(c) for c in self.constraints)
+        return f"({cs}) => {self.inner}"
+
+
+@dataclass(frozen=True)
+class GADTConstructor:
     name: str
     type: Type
 
 
-# ============ Type Classes ============
-
-
 @dataclass(frozen=True)
 class TypeClass:
-    """Type class definition"""
-
     name: str
     params: tuple[str, ...]
     methods: dict[str, Type]
@@ -166,8 +203,6 @@ class TypeClass:
 
 @dataclass(frozen=True)
 class ClassInstance:
-    """Type class instance"""
-
     class_name: str
     type_: Type
     methods: dict[str, Type]
@@ -180,8 +215,15 @@ class ClassInstance:
 class Scheme:
     vars: tuple[str, ...]
     type: Type
+    constraints: tuple[TConstraint, ...] = ()
 
     def __str__(self) -> str:
+        if self.constraints:
+            cs = ", ".join(str(c) for c in self.constraints)
+            if self.vars:
+                vars_str = " ".join(self.vars)
+                return f"({cs}) => forall {vars_str}. {self.type}"
+            return f"({cs}) => {self.type}"
         if self.vars:
             vars_str = " ".join(self.vars)
             return f"forall {vars_str}. {self.type}"
@@ -220,12 +262,46 @@ class Subst:
             return TTuple(tuple(self.apply(e) for e in t.elements))
         if isinstance(t, TRecord):
             return TRecord(tuple((k, self.apply(v)) for k, v in t.fields))
+        if isinstance(t, TCon):
+            if t.args:
+                return TCon(t.name, tuple(self.apply(a) for a in t.args))
+            return TCon(t.name, ())
+        if isinstance(t, TIO):
+            return TIO(self.apply(t.inner))
+        if isinstance(t, TState):
+            return TState(self.apply(t.state), self.apply(t.inner))
+        if isinstance(t, TGADT):
+            return TGADT(
+                t.name,
+                tuple(self.apply(p) for p in t.params),
+                {k: self.apply(v) for k, v in t.constructors.items()},
+            )
+        if isinstance(t, TRowPoly):
+            return TRowPoly(
+                {k: self.apply(v) for k, v in t.fields.items()},
+                t.rest,
+            )
+        if isinstance(t, (TForall, TExists)):
+            return type(t)(
+                t.vars,
+                self.apply(t.inner),
+            )
+        if isinstance(t, TConstraint):
+            return TConstraint(t.class_name, self.apply(t.type_))
+        if isinstance(t, TQualified):
+            return TQualified(
+                tuple(
+                    TConstraint(c.class_name, self.apply(c.type_))
+                    for c in t.constraints
+                ),
+                self.apply(t.inner),
+            )
         return t
 
     def apply_scheme(self, scheme: Scheme) -> Scheme:
         new_mapping = {k: v for k, v in self.mapping.items() if k not in scheme.vars}
         s = Subst(new_mapping)
-        return Scheme(scheme.vars, s.apply(scheme.type))
+        return Scheme(scheme.vars, s.apply(scheme.type), scheme.constraints)
 
     def compose(self, other: Subst) -> Subst:
         new_mapping = {}
@@ -254,6 +330,39 @@ class Subst:
             result = set()
             for _, v in t.fields:
                 result |= self.free_vars(v)
+            return result
+        if isinstance(t, TCon):
+            result = set()
+            for a in t.args:
+                result |= self.free_vars(a)
+            return result
+        if isinstance(t, TIO):
+            return self.free_vars(t.inner)
+        if isinstance(t, TState):
+            return self.free_vars(t.state) | self.free_vars(t.inner)
+        if isinstance(t, TGADT):
+            result = set()
+            for p in t.params:
+                result |= self.free_vars(p)
+            for v in t.constructors.values():
+                result |= self.free_vars(v)
+            return result
+        if isinstance(t, TRowPoly):
+            result = set()
+            for v in t.fields.values():
+                result |= self.free_vars(v)
+            if t.rest:
+                result.add(t.rest)
+            return result
+        if isinstance(t, (TForall, TExists)):
+            return self.free_vars(t.inner) - set(t.vars)
+        if isinstance(t, TConstraint):
+            return self.free_vars(t.type_)
+        if isinstance(t, TQualified):
+            result = set()
+            for c in t.constraints:
+                result |= self.free_vars(c.type_)
+            result |= self.free_vars(t.inner)
             return result
         return set()
 
@@ -323,7 +432,6 @@ class Subst:
                     return None
                 result = s.compose(result)
             return result
-
         return None
 
 
@@ -345,8 +453,18 @@ class TypeEnv:
         new_bindings[name] = scheme
         return TypeEnv(new_bindings)
 
+    def extend_many(self, bindings: dict[str, Scheme]) -> TypeEnv:
+        new_bindings = self.bindings.copy()
+        new_bindings.update(bindings)
+        return TypeEnv(new_bindings)
+
     def remove(self, name: str) -> TypeEnv:
         new_bindings = self.bindings.copy()
         if name in new_bindings:
             del new_bindings[name]
+        return TypeEnv(new_bindings)
+
+    def merge(self, other: TypeEnv) -> TypeEnv:
+        new_bindings = self.bindings.copy()
+        new_bindings.update(other.bindings)
         return TypeEnv(new_bindings)

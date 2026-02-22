@@ -5,6 +5,7 @@ from pfn.typechecker.classes import (
     get_default_context,
     resolve_instance,
 )
+from pfn.types import TCon
 
 
 class TestClassContext:
@@ -26,20 +27,21 @@ class TestClassContext:
     def test_add_instance(self):
         ctx = ClassContext()
         ctx.add_class("Eq", ["a"], {"eq": None})
-        ctx.add_instance("Eq", "Int", {"eq": None})
-        inst = ctx.lookup_instance("Eq", "Int")
+        ctx.add_instance("Eq", TCon("Int"), {"eq": None})
+        inst = ctx.lookup_instance("Eq", TCon("Int"))
         assert inst is not None
         assert inst.class_name == "Eq"
-        assert inst.type_name == "Int"
+        assert inst.type_ == TCon("Int")
 
     def test_resolve_instance(self):
         ctx = get_default_context()
-        inst = resolve_instance(ctx, "Eq", "Int")
-        assert inst is None
+        inst = resolve_instance(ctx, "Eq", TCon("Int"))
+        assert inst is not None
+        assert inst.class_name == "Eq"
 
     def test_get_method(self):
         ctx = ClassContext()
         ctx.add_class("Show", ["a"], {"show": None})
-        ctx.add_instance("Show", "String", {"show": "show_string_impl"})
-        method = ctx.get_method("Show", "String", "show")
+        ctx.add_instance("Show", TCon("String"), {"show": "show_string_impl"})
+        method = ctx.get_method("Show", TCon("String"), "show")
         assert method == "show_string_impl"
