@@ -288,3 +288,194 @@ def parseReturnType(state: ParserState) : Result ParseError (Maybe TypeRef, Pars
         Ok((typeRef, s2)) -> Ok((Just(typeRef), s2))
         Err(e) -> Err(e)
     Nothing -> Ok((Nothing, state))
+
+-- ============ Type Declaration Parsing ============
+
+-- Parse type declaration
+def parseTypeDecl(state: ParserState) : Result ParseError (Decl, ParserState) =
+  match expect(state, IDENT, "Expected type name") with
+    Ok((nameTok, s1)) ->
+      let name = getTokenString(nameTok)
+      in match parseTypeParams(s1) with
+        Ok((params, s2)) ->
+          let (mEquals, s3) = matchToken(s2, [EQUALS])
+          in match mEquals with
+            Just(_) ->
+              match parseTypeRef(s3) with
+                Ok((typeRef, s4)) ->
+                  -- Check if it's a record type
+                  match typeRef with
+                    RecordTypeRef(data) ->
+                      Ok((TypeDecl({
+                        name: name,
+                        params: params,
+                        constructors: [],
+                        isRecord: True,
+                        recordFields: data.fields,
+                        isGadt: False
+                      }), s4))
+                    _ ->
+                      -- Parse constructors
+                      match parseConstructors(s3, []) with
+                        Ok((ctors, s5)) ->
+                          Ok((TypeDecl({
+                            name: name,
+                            params: params,
+                            constructors: ctors,
+                            isRecord: False,
+                            recordFields: [],
+                            isGadt: False
+                          }), s5))
+                        Err(e) -> Err(e)
+                Err(e) -> Err(e)
+            Nothing ->
+              match parseConstructors(s2, []) with
+                Ok((ctors, s3)) ->
+                  Ok((TypeDecl({
+                    name: name,
+                    params: params,
+                    constructors: ctors,
+                    isRecord: False,
+                    recordFields: [],
+                    isGadt: False
+                  }), s3))
+                Err(e) -> Err(e)
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+-- Parse type parameters
+def parseTypeParams(state: ParserState) : Result ParseError (List String, ParserState) =
+  parseTypeParamsLoop(state, [])
+
+def parseTypeParamsLoop(state: ParserState, params: List String) : Result ParseError (List String, ParserState) =
+  if check(state, [IDENT]) then
+    let peekTok = peek(state)
+    in if List.member(peekTok.tokenType, [EQUALS, PIPE, EOF]) then
+      let name = getTokenString(current(state))
+      in parseTypeParamsLoop(advance(state), params ++ [name])
+    else
+      Ok((params, state))
+  else
+    Ok((params, state))
+
+-- Parse constructors
+def parseConstructors(state: ParserState, ctors: List Constructor) : Result ParseError (List Constructor, ParserState) =
+  let (mPipe, s1) = matchToken(state, [PIPE])
+  in match mPipe with
+    Just(_) ->
+      match expect(s1, IDENT, "Expected constructor name") with
+        Ok((nameTok, s2)) ->
+          let name = getTokenString(nameTok)
+          in match parseConstructorFields(s2, []) with
+            Ok((fields, s3)) ->
+              parseConstructors(s3, ctors ++ [{ name: name, fields: fields }])
+            Err(e) -> Err(e)
+        Err(e) -> Err(e)
+    Nothing -> Ok((ctors, state))
+
+-- Parse constructor fields
+def parseConstructorFields(state: ParserState, fields: List TypeRef) : Result ParseError (List TypeRef, ParserState) =
+  if check(state, [IDENT]) && not(check(state, [PIPE, EOF])) then
+    match parseTypeAtom(state) with
+      Ok((typeRef, s1)) -> parseConstructorFields(s1, fields ++ [typeRef])
+      Err(e) -> Err(e)
+  else
+    Ok((fields, state))
+
+-- Parse GADT declaration
+def parseGadtDecl(state: ParserState) : Result ParseError (Decl, ParserState) =
+  match expect(state, IDENT, "Expected type name") with
+    Ok((nameTok, s1)) ->
+      let name = getTokenString(nameTok)
+      in match parseTypeParams(s1) with
+        Ok((params, s2)) ->
+          match expect(s2, KW_WHERE, "Expected 'where'") with
+            Ok((_, s3)) ->
+              match expect(s3, LBRACE, "Expected '{'") with
+                Ok((_, s4)) ->
+                  match parseGadtConstructors(s4, []) with
+                    Ok((ctors, s5)) ->
+                      match expect(s5, RBRACE, "Expected '}'") with
+                        Ok((_, s6)) ->
+                          Ok((TypeDecl({
+                            name: name,
+                            params: params,
+                            constructors: ctors,
+                            isRecord: False,
+                            recordFields: [],
+                            isGadt: True
+                          }), s6))
+                        Err(e) -> Err(e)
+                    Err(e) -> Err(e)
+                Err(e) -> Err(e)
+            Err(e) -> Err(e)
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+-- Parse GADT constructors
+def parseGadtConstructors(state: ParserState, ctors: List Constructor) : Result ParseError (List Constructor, ParserState) =
+  if check(state, [RBRACE]) then
+    Ok((ctors, state))
+  else
+    match expect(state, IDENT, "Expected constructor name") with
+      Ok((nameTok, s1)) ->
+        let name = getTokenString(nameTok)
+        in match parseGadtFields(s1, []) with
+          Ok((fields, s2)) ->
+            let (mComma, s3) = matchToken(s2, [COMMA])
+            in parseGadtConstructors(s3, ctors ++ [{ name: name, fields: fields }])
+          Err(e) -> Err(e)
+      Err(e) -> Err(e)
+
+-- Parse GADT fields
+def parseGadtFields(state: ParserState, fields: List TypeRef) : Result ParseError (List TypeRef, ParserState) =
+  if check(state, [IDENT]) then
+    match parseTypeRef(state) with
+      Ok((typeRef, s1)) -> parseGadtFields(s1, fields ++ [typeRef])
+      Err(e) -> Err(e)
+  else
+    Ok((fields, state))
+
+-- ============ Import Declaration Parsing ============
+
+def parseImportDecl(state: ParserState) : Result ParseError (Decl, ParserState) =
+  let isPython = check(state, [IDENT]) && getTokenString(current(state)) == "python"
+  in let s1 = if isPython then advance(state) else state
+  in match expect(s1, IDENT, "Expected module name") with
+    Ok((firstPart, s2)) ->
+      let firstPartName = getTokenString(firstPart)
+      in match parseModulePath(s2, [firstPartName]) with
+        Ok((parts, s3)) ->
+          let moduleName = String.join(".", parts)
+          in let (mAs, s4) = matchToken(s3, [KW_AS])
+          in match mAs with
+            Just(_) ->
+              match expect(s4, IDENT, "Expected alias") with
+                Ok((aliasTok, s5)) ->
+                  Ok((ImportDecl({
+                    module: moduleName,
+                    alias: Just(getTokenString(aliasTok)),
+                    exposing: Nothing,
+                    isPython: isPython
+                  }), s5))
+                Err(e) -> Err(e)
+            Nothing ->
+              Ok((ImportDecl({
+                module: moduleName,
+                alias: Nothing,
+                exposing: Nothing,
+                isPython: isPython
+              }), s4))
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+-- Parse module path (a.b.c)
+def parseModulePath(state: ParserState, parts: List String) : Result ParseError (List String, ParserState) =
+  let (mDot, s1) = matchToken(state, [DOT])
+  in match mDot with
+    Just(_) ->
+      match expect(s1, IDENT, "Expected module part") with
+        Ok((partTok, s2)) ->
+          parseModulePath(s2, parts ++ [getTokenString(partTok)])
+        Err(e) -> Err(e)
+    Nothing -> Ok((parts, state))
