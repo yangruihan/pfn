@@ -1,0 +1,326 @@
+-- Pfn Bootstrap: Codegen
+-- Python code generation from Pfn AST
+
+module Bootstrap.Codegen
+
+import Bootstrap.AST (..)
+
+-- ============ Code Generator ============
+
+-- Generate Python code from a module
+def generateModule(mod: Module) : String =
+  generateDecls(mod.declarations, [])
+
+-- Generate declarations
+def generateDecls(decls: List Decl, lines: List String) : String =
+  match decls with
+    [] -> String.join("\n\n", List.reverse(lines))
+    [d | rest] ->
+      let code = generateDecl(d)
+      in if code == "" then
+        generateDecls(rest, lines)
+      else
+        generateDecls(rest, [code] ++ lines)
+
+-- Generate a single declaration
+def generateDecl(decl: Decl) : String =
+  match decl with
+    DefDecl(data) -> generateDefDecl(data)
+    TypeDecl(data) -> generateTypeDecl(data)
+    ImportDecl(data) -> generateImportDecl(data)
+    _ -> ""
+
+-- ============ Function Declaration ============
+
+def generateDefDecl(decl: DefDeclData) : String =
+  let paramsStr = generateParams(decl.params)
+  in let bodyCode = generateExpr(decl.body)
+  in let funcDef = generateFuncDef(decl.name, decl.params, bodyCode)
+  in if decl.isExported then
+    let exportName = match decl.exportName with
+      Just(name) -> name
+      Nothing -> decl.name
+    in funcDef ++ "\n\n" ++ exportName ++ " = " ++ decl.name
+  else
+    funcDef
+
+def generateParams(params: List Param) : String =
+  String.join(", ", List.map(\p -> p.name, params))
+
+def generateFuncDef(name: String, params: List Param, bodyCode: String) : String =
+  match params with
+    [] -> "def " ++ name ++ "():\n    return " ++ bodyCode
+    [p] -> "def " ++ name ++ "(" ++ p.name ++ "):\n    return " ++ bodyCode
+    [first | rest] ->
+      let innerBody = generateCurriedBody(rest, bodyCode)
+      in "def " ++ name ++ "(" ++ first.name ++ "): return " ++ innerBody
+
+def generateCurriedBody(params: List Param, body: String) : String =
+  match params with
+    [] -> body
+    [p | rest] ->
+      generateCurriedBody(rest, "lambda " ++ p.name ++ ": " ++ body)
+
+-- ============ Type Declaration ============
+
+def generateTypeDecl(decl: TypeDeclData) : String =
+  if decl.isRecord then
+    generateRecordType(decl)
+  else
+    generateSumType(decl)
+
+def generateRecordType(decl: TypeDeclData) : String =
+  let header = "from dataclasses import dataclass\n\n@dataclass\nclass " ++ decl.name ++ ":"
+  in let fields = generateRecordFields(decl.recordFields, [])
+  in header ++ "\n" ++ String.join("\n", fields)
+
+def generateRecordFields(fields: List (String, TypeRef), lines: List String) : List String =
+  match fields with
+    [] -> List.reverse(lines)
+    [(name, typeRef) | rest] ->
+      let typeStr = generateTypeRef(typeRef)
+      in generateRecordFields(rest, ["    " ++ name ++ ": " ++ typeStr] ++ lines)
+
+def generateSumType(decl: TypeDeclData) : String =
+  let header = "from dataclasses import dataclass\nfrom typing import Union\n"
+  in let ctors = generateConstructors(decl.constructors, [])
+  in let ctorNames = List.map(\c -> c.name, decl.constructors)
+  in let unionDef = "\n" ++ decl.name ++ " = Union[" ++ String.join(", ", ctorNames) ++ "]"
+  in header ++ String.join("\n", ctors) ++ unionDef
+
+def generateConstructors(ctors: List Constructor, lines: List String) : List String =
+  match ctors with
+    [] -> List.reverse(lines)
+    [c | rest] ->
+      let ctorCode = generateConstructor(c)
+      in generateConstructors(rest, [ctorCode] ++ lines)
+
+def generateConstructor(ctor: Constructor) : String =
+  if List.isEmpty(ctor.fields) then
+    "@dataclass\nclass " ++ ctor.name ++ ":\n    pass\n"
+  else
+    let fields = generateCtorFields(ctor.fields, 0, [])
+    in "@dataclass\nclass " ++ ctor.name ++ ":\n" ++ String.join("\n", fields) ++ "\n"
+
+def generateCtorFields(fields: List TypeRef, index: Int, lines: List String) : List String =
+  match fields with
+    [] -> List.reverse(lines)
+    [t | rest] ->
+      let typeStr = generateTypeRef(t)
+      in let fieldName = "_field" ++ toString(index)
+      in generateCtorFields(rest, index + 1, ["    " ++ fieldName ++ ": " ++ typeStr] ++ lines)
+
+-- ============ Import Declaration ============
+
+def generateImportDecl(decl: ImportDeclData) : String =
+  match decl.alias with
+    Just(alias) -> "import " ++ decl.module ++ " as " ++ alias
+    Nothing -> "import " ++ decl.module
+
+-- ============ Type Reference ============
+
+def generateTypeRef(typeRef: TypeRef) : String =
+  match typeRef with
+    SimpleTypeRef(data) -> generateSimpleTypeRef(data)
+    FunTypeRef(_) -> "Callable[[...], ...]"
+    TupleTypeRef(data) ->
+      let elems = String.join(", ", List.map(generateTypeRef, data.elements))
+      in "tuple[" ++ elems ++ "]"
+    RecordTypeRef(_) -> "dict"
+
+def generateSimpleTypeRef(data: SimpleTypeRefData) : String =
+  let name = mapTypeName(data.name)
+  in if List.isEmpty(data.args) then
+    name
+  else
+    let argsStr = String.join(", ", List.map(generateTypeRef, data.args))
+    in name ++ "[" ++ argsStr ++ "]"
+
+def mapTypeName(name: String) : String =
+  match name with
+    "Int" -> "int"
+    "Float" -> "float"
+    "String" -> "str"
+    "Bool" -> "bool"
+    "List" -> "list"
+    _ -> name
+
+-- ============ Expression Generation ============
+
+def generateExpr(expr: Expr) : String =
+  match expr with
+    IntLit(value) -> toString(value)
+    FloatLit(value) -> toString(value)
+    StringLit(value) -> reprString(value)
+    CharLit(value) -> reprChar(value)
+    BoolLit(value) -> if value then "True" else "False"
+    UnitLit -> "None"
+    Var(name) -> name
+    Lambda(data) -> generateLambda(data)
+    App(data) -> generateApp(data)
+    BinOp(data) -> generateBinOp(data)
+    UnaryOp(data) -> generateUnaryOp(data)
+    If(data) -> generateIf(data)
+    Let(data) -> generateLet(data)
+    LetFunc(data) -> generateLetFunc(data)
+    Match(data) -> generateMatch(data)
+    ListLit(elements) -> generateList(elements)
+    TupleLit(elements) -> generateTuple(elements)
+    RecordLit(fields) -> generateRecord(fields)
+    FieldAccess(data) -> generateFieldAccess(data)
+    IndexAccess(data) -> generateIndexAccess(data)
+    DoNotation(data) -> generateDo(data)
+    _ -> ""
+
+-- ============ Lambda ============
+
+def generateLambda(data: LambdaData) : String =
+  let paramsStr = String.join(", ", List.map(\p -> p.name, data.params))
+  in let bodyCode = generateExpr(data.body)
+  in "lambda " ++ paramsStr ++ ": " ++ bodyCode
+
+-- ============ Application ============
+
+def generateApp(data: AppData) : String =
+  let funcCode = generateExpr(data.func)
+  in let argsStr = String.join(", ", List.map(generateExpr, data.args))
+  in funcCode ++ "(" ++ argsStr ++ ")"
+
+-- ============ Binary Operation ============
+
+def generateBinOp(data: BinOpData) : String =
+  let leftCode = generateExpr(data.left)
+  in let rightCode = generateExpr(data.right)
+  in match data.op with
+    "::" -> "[" ++ leftCode ++ "] + " ++ rightCode
+    "++" -> leftCode ++ " + " ++ rightCode
+    _ -> leftCode ++ " " ++ data.op ++ " " ++ rightCode
+
+-- ============ Unary Operation ============
+
+def generateUnaryOp(data: UnaryOpData) : String =
+  let operandCode = generateExpr(data.operand)
+  in data.op ++ operandCode
+
+-- ============ If Expression ============
+
+def generateIf(data: IfData) : String =
+  let condCode = generateExpr(data.cond)
+  in let thenCode = generateExpr(data.thenBranch)
+  in let elseCode = generateExpr(data.elseBranch)
+  in thenCode ++ " if " ++ condCode ++ " else " ++ elseCode
+
+-- ============ Let Expression ============
+
+def generateLet(data: LetData) : String =
+  let valueCode = generateExpr(data.value)
+  in let bodyCode = generateExpr(data.body)
+  in "(" ++ bodyCode ++ " if (" ++ data.name ++ " := " ++ valueCode ++ ") is not None else None)"
+
+-- ============ Let Function ============
+
+def generateLetFunc(data: LetFuncData) : String =
+  let paramsStr = String.join(", ", List.map(\p -> p.name, data.params))
+  in let valueCode = generateExpr(data.value)
+  in let bodyCode = generateExpr(data.body)
+  in "(lambda " ++ paramsStr ++ ": " ++ bodyCode ++ ")(" ++ valueCode ++ ")"
+
+-- ============ Match Expression ============
+
+def generateMatch(data: MatchData) : String =
+  if List.isEmpty(data.cases) then
+    "None"
+  else
+    let scrutineeCode = generateExpr(data.scrutinee)
+    in let casesCode = generateMatchCases(data.cases, "__match_val", [])
+    in "(lambda __match_val: " ++ String.join(" else ", casesCode) ++ ")(" ++ scrutineeCode ++ ")"
+
+def generateMatchCases(cases: List MatchCase, var: String, lines: List String) : List String =
+  match cases with
+    [] -> List.reverse(lines)
+    [c | rest] ->
+      let (patternCheck, bindings) = generatePatternCheck(c.pattern, var)
+      in let bodyCode = generateExpr(c.body)
+      in let caseCode = if patternCheck == "True" then
+        "(" ++ bodyCode ++ ")"
+      else
+        "(" ++ bodyCode ++ " if " ++ patternCheck ++ " else None)"
+      in generateMatchCases(rest, var, [caseCode] ++ lines)
+
+-- ============ Pattern Check ============
+
+def generatePatternCheck(pattern: Pattern, var: String) : (String, List (String, String)) =
+  match pattern with
+    IntPattern(value) -> (var ++ " == " ++ toString(value), [])
+    FloatPattern(value) -> (var ++ " == " ++ toString(value), [])
+    StringPattern(value) -> (var ++ " == " ++ reprString(value), [])
+    CharPattern(value) -> (var ++ " == " ++ reprChar(value), [])
+    BoolPattern(value) -> (var ++ " is " ++ (if value then "True" else "False"), [])
+    VarPattern(name) -> ("True", [(name, var)])
+    WildcardPattern -> ("True", [])
+    ListPattern(elements) ->
+      if List.isEmpty(elements) then
+        (var ++ " == []", [])
+      else
+        ("isinstance(" ++ var ++ ", list)", [])
+    ConsPattern(_) ->
+      ("isinstance(" ++ var ++ ", list) and len(" ++ var ++ ") > 0", [])
+    _ -> ("True", [])
+
+-- ============ List Literal ============
+
+def generateList(elements: List Expr) : String =
+  let elemsStr = String.join(", ", List.map(generateExpr, elements))
+  in "[" ++ elemsStr ++ "]"
+
+-- ============ Tuple Literal ============
+
+def generateTuple(elements: List Expr) : String =
+  let elemsStr = String.join(", ", List.map(generateExpr, elements))
+  in "(" ++ elemsStr ++ ")"
+
+-- ============ Record Literal ============
+
+def generateRecord(fields: List RecordField) : String =
+  let fieldsStr = String.join(", ", List.map(generateRecordField, fields))
+  in "{" ++ fieldsStr ++ "}"
+
+def generateRecordField(field: RecordField) : String =
+  "\"" ++ field.name ++ "\": " ++ generateExpr(field.value)
+
+-- ============ Field Access ============
+
+def generateFieldAccess(data: FieldAccessData) : String =
+  let exprCode = generateExpr(data.expr)
+  in exprCode ++ "." ++ data.field
+
+-- ============ Index Access ============
+
+def generateIndexAccess(data: IndexAccessData) : String =
+  let exprCode = generateExpr(data.expr)
+  in let indexCode = generateExpr(data.index)
+  in exprCode ++ "[" ++ indexCode ++ "]"
+
+-- ============ Do Notation ============
+
+def generateDo(data: DoNotationData) : String =
+  let bodyCode = generateExpr(data.body)
+  in generateDoBindings(List.reverse(data.bindings), bodyCode)
+
+def generateDoBindings(bindings: List DoBinding, result: String) : String =
+  match bindings with
+    [] -> result
+    [b | rest] ->
+      let valueCode = generateExpr(b.value)
+      in generateDoBindings(rest, "(lambda " ++ b.name ++ ": " ++ result ++ ")(" ++ valueCode ++ ")")
+
+-- ============ String Helpers ============
+
+def reprString(s: String) : String =
+  "\"" ++ escapeString(s) ++ "\""
+
+def escapeString(s: String) : String =
+  s
+
+def reprChar(c: Char) : String =
+  "'" ++ toString(c) ++ "'"
