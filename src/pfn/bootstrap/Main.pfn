@@ -1,0 +1,61 @@
+-- Pfn Bootstrap: Main
+-- Entry point for the self-hosted Pfn compiler
+
+module Bootstrap.Main
+
+import Bootstrap.Token (..)
+import Bootstrap.Lexer (..)
+import Bootstrap.AST (..)
+import Bootstrap.Parser (..)
+import Bootstrap.Types (..)
+import Bootstrap.TypeChecker (..)
+import Bootstrap.Codegen (..)
+
+-- ============ Compiler Pipeline ============
+
+-- Compile a Pfn source file to Python
+def compile(source: String) : Result String String =
+  match tokenize(source) with
+    Err(e) -> Err("Lexer error: " ++ e.message)
+    Ok(tokens) ->
+      match parse(tokens) with
+        Err(e) -> Err("Parser error: " ++ errorToString(e))
+        Ok(mod) ->
+          -- Type check (optional, for validation)
+          let typeCheckResult = typeCheckModule(mod)
+          in match typeCheckResult with
+            Err(e) -> Err("Type error: " ++ e.message)
+            Ok(_) ->
+              -- Generate Python code
+              let pythonCode = generateModule(mod)
+              in Ok(pythonCode)
+
+-- Type check a module
+def typeCheckModule(mod: Module) : Result TypeError () =
+  typeCheckDecls(mod.declarations, initTypeChecker)
+
+def typeCheckDecls(decls: List Decl, state: TypeCheckerState) : Result TypeError () =
+  match decls with
+    [] -> Ok(())
+    [DefDecl(data) | rest] ->
+      match inferLetFunc(state, emptySubst, data.name, data.params, data.body, UnitLit) with
+        Ok(_) -> typeCheckDecls(rest, state)
+        Err(e) -> Err(e)
+    [_ | rest] -> typeCheckDecls(rest, state)
+
+-- ============ CLI Interface ============
+
+-- Compile and print result
+def compileAndPrint(source: String) : String =
+  match compile(source) with
+    Ok(code) -> "Generated Python:\n" ++ code
+    Err(e) -> "Error: " ++ e
+
+-- Example: compile a simple function
+def example : String =
+  let source = "def add x y = x + y"
+  in compileAndPrint(source)
+
+-- Main entry point
+def main : String =
+  "Pfn Bootstrap Compiler\n\n" ++ example
