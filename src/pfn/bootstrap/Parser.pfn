@@ -1103,3 +1103,347 @@ def parseAccessLoop(state: ParserState, expr: Expr) : Result ParseError (Expr, P
                 Err(e) -> Err(e)
             Err(e) -> Err(e)
         Nothing -> Ok((expr, state))
+
+-- Parse atomic expression
+def parseAtom(state: ParserState) : Result ParseError (Expr, ParserState) =
+  -- Integer literal
+  let (mInt, s1) = matchToken(state, [INT])
+  in match mInt with
+    Just(tok) -> Ok((IntLit(getTokenInt(tok)), s1))
+    Nothing ->
+      -- Float literal
+      let (mFloat, s2) = matchToken(state, [FLOAT])
+      in match mFloat with
+        Just(tok) -> Ok((FloatLit(getTokenFloat(tok)), s2))
+        Nothing ->
+          -- String literal
+          let (mString, s3) = matchToken(state, [STRING])
+          in match mString with
+            Just(tok) -> Ok((StringLit(getTokenString(tok)), s3))
+            Nothing ->
+              -- Char literal
+              let (mChar, s4) = matchToken(state, [CHAR])
+              in match mChar with
+                Just(tok) -> Ok((CharLit(getTokenChar(tok)), s4))
+                Nothing ->
+                  -- Bool literals
+                  let (mTrue, s5) = matchToken(state, [TRUE])
+                  in match mTrue with
+                    Just(_) -> Ok((BoolLit(True), s5))
+                    Nothing ->
+                      let (mFalse, s6) = matchToken(state, [FALSE])
+                      in match mFalse with
+                        Just(_) -> Ok((BoolLit(False), s6))
+                        Nothing ->
+                          -- Lambda
+                          let (mFn, s7) = matchToken(state, [KW_FN])
+                          in match mFn with
+                            Just(_) -> parseLambda(s7)
+                            Nothing ->
+                              -- Parenthesized expression or tuple
+                              let (mLParen, s8) = matchToken(state, [LPAREN])
+                              in match mLParen with
+                                Just(_) ->
+                                  if check(s8, [RPAREN]) then
+                                    Ok((UnitLit, advance(s8)))
+                                  else
+                                    match parseExpr(s8) with
+                                      Ok((first, s9)) ->
+                                        let (mComma, s10) = matchToken(s9, [COMMA])
+                                        in match mComma with
+                                          Just(_) ->
+                                            match parseTupleElements(s10, [first]) with
+                                              Ok((elements, s11)) ->
+                                                match expect(s11, RPAREN, "Expected ')'") with
+                                                  Ok((_, s12)) -> Ok((TupleLit(elements), s12))
+                                                  Err(e) -> Err(e)
+                                              Err(e) -> Err(e)
+                                          Nothing ->
+                                            match expect(s9, RPAREN, "Expected ')'") with
+                                              Ok((_, s10)) -> Ok((first, s10))
+                                              Err(e) -> Err(e)
+                                      Err(e) -> Err(e)
+                                Nothing ->
+                                  -- List literal
+                                  let (mLBracket, s9) = matchToken(state, [LBRACKET])
+                                  in match mLBracket with
+                                    Just(_) ->
+                                      if check(s9, [RBRACKET]) then
+                                        Ok((ListLit([]), advance(s9)))
+                                      else
+                                        match parseListElements(s9, []) with
+                                          Ok((elements, s10)) ->
+                                            match expect(s10, RBRACKET, "Expected ']'") with
+                                              Ok((_, s11)) -> Ok((ListLit(elements), s11))
+                                              Err(e) -> Err(e)
+                                          Err(e) -> Err(e)
+                                    Nothing ->
+                                      -- Record literal
+                                      let (mLBrace, s10) = matchToken(state, [LBRACE])
+                                      in match mLBrace with
+                                        Just(_) -> parseRecord(s10)
+                                        Nothing ->
+                                          -- Variable
+                                          match expect(state, IDENT, "Unexpected token") with
+                                            Ok((nameTok, s11)) -> Ok((Var(getTokenString(nameTok)), s11))
+                                            Err(e) -> Err(e)
+
+-- Parse lambda
+def parseLambda(state: ParserState) : Result ParseError (Expr, ParserState) =
+  let (mLParen, s1) = matchToken(state, [LPAREN])
+  in match mLParen with
+    Just(_) ->
+      if check(s1, [RPAREN]) then
+        match expect(advance(s1), FAT_ARROW, "Expected '=>'") with
+          Ok((_, s2)) ->
+            match parseExpr(s2) with
+              Ok((body, s3)) -> Ok((Lambda({ params: [], body: body }), s3))
+              Err(e) -> Err(e)
+          Err(e) -> Err(e)
+      else
+        match parseLambdaParams(s1, []) with
+          Ok((params, s2)) ->
+            match expect(s2, RPAREN, "Expected ')'") with
+              Ok((_, s3)) ->
+                match expect(s3, FAT_ARROW, "Expected '=>'") with
+                  Ok((_, s4)) ->
+                    match parseExpr(s4) with
+                      Ok((body, s5)) -> Ok((Lambda({ params: params, body: body }), s5))
+                      Err(e) -> Err(e)
+                  Err(e) -> Err(e)
+              Err(e) -> Err(e)
+          Err(e) -> Err(e)
+    Nothing ->
+      match parseLambdaParamsNoParens(state, []) with
+        Ok((params, s1)) ->
+          match expect(s1, FAT_ARROW, "Expected '=>'") with
+            Ok((_, s2)) ->
+              match parseExpr(s2) with
+                Ok((body, s3)) -> Ok((Lambda({ params: params, body: body }), s3))
+                Err(e) -> Err(e)
+            Err(e) -> Err(e)
+        Err(e) -> Err(e)
+
+-- Parse lambda parameters inside parentheses
+def parseLambdaParams(state: ParserState, params: List Param) : Result ParseError (List Param, ParserState) =
+  match parseParam(state) with
+    Ok((param, s1)) ->
+      let (mComma, s2) = matchToken(s1, [COMMA])
+      in match mComma with
+        Just(_) -> parseLambdaParams(s2, params ++ [param])
+        Nothing -> Ok((params ++ [param], s1))
+    Err(e) -> Err(e)
+
+-- Parse lambda parameters without parentheses
+def parseLambdaParamsNoParens(state: ParserState, params: List Param) : Result ParseError (List Param, ParserState) =
+  if check(state, [IDENT]) then
+    let peekTok = peek(state)
+    in if List.member(peekTok.tokenType, [IDENT, FAT_ARROW, COLON, LPAREN]) then
+      match parseParam(state) with
+        Ok((param, s1)) -> parseLambdaParamsNoParens(s1, params ++ [param])
+        Err(e) -> Err(e)
+    else
+      Ok((params, state))
+  else
+    Ok((params, state))
+
+-- Parse tuple elements
+def parseTupleElements(state: ParserState, elements: List Expr) : Result ParseError (List Expr, ParserState) =
+  if check(state, [RPAREN]) then
+    Ok((elements, state))
+  else
+    match parseExpr(state) with
+      Ok((elem, s1)) ->
+        let (mComma, s2) = matchToken(s1, [COMMA])
+        in parseTupleElements(s2, elements ++ [elem])
+      Err(e) -> Err(e)
+
+-- Parse list elements
+def parseListElements(state: ParserState, elements: List Expr) : Result ParseError (List Expr, ParserState) =
+  match parseExpr(state) with
+    Ok((elem, s1)) ->
+      let (mComma, s2) = matchToken(s1, [COMMA])
+      in match mComma with
+        Just(_) -> parseListElements(s2, elements ++ [elem])
+        Nothing -> Ok((elements ++ [elem], s1))
+    Err(e) -> Err(e)
+
+-- Parse record literal or update
+def parseRecord(state: ParserState) : Result ParseError (Expr, ParserState) =
+  if check(state, [IDENT]) && peek(state).tokenType == KW_WITH then
+    -- Record update
+    match expect(state, IDENT, "Expected record name") with
+      Ok((nameTok, s1)) ->
+        match expect(s1, KW_WITH, "Expected 'with'") with
+          Ok((_, s2)) ->
+            match parseRecordUpdates(s2, []) with
+              Ok((updates, s3)) ->
+                match expect(s3, RBRACE, "Expected '}'") with
+                  Ok((_, s4)) ->
+                    Ok((RecordUpdate({ record: Var(getTokenString(nameTok)), updates: updates }), s4))
+                  Err(e) -> Err(e)
+              Err(e) -> Err(e)
+          Err(e) -> Err(e)
+      Err(e) -> Err(e)
+  else if check(state, [RBRACE]) then
+    Ok((RecordLit([]), advance(state)))
+  else
+    match parseRecordFieldsExpr(state, []) with
+      Ok((fields, s1)) ->
+        match expect(s1, RBRACE, "Expected '}'") with
+          Ok((_, s2)) -> Ok((RecordLit(fields), s2))
+          Err(e) -> Err(e)
+      Err(e) -> Err(e)
+
+-- Parse record fields for expression
+def parseRecordFieldsExpr(state: ParserState, fields: List RecordField) : Result ParseError (List RecordField, ParserState) =
+  match expect(state, IDENT, "Expected field name") with
+    Ok((nameTok, s1)) ->
+      match expect(s1, COLON, "Expected ':'") with
+        Ok((_, s2)) ->
+          match parseExpr(s2) with
+            Ok((value, s3)) ->
+              let (mComma, s4) = matchToken(s3, [COMMA])
+              in if check(s4, [RBRACE]) then
+                Ok((fields ++ [{ name: getTokenString(nameTok), value: value }], s4))
+              else
+                parseRecordFieldsExpr(s4, fields ++ [{ name: getTokenString(nameTok), value: value }])
+            Err(e) -> Err(e)
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+-- Parse record updates
+def parseRecordUpdates(state: ParserState, updates: List RecordField) : Result ParseError (List RecordField, ParserState) =
+  if check(state, [RBRACE]) then
+    Ok((updates, state))
+  else
+    match expect(state, IDENT, "Expected field name") with
+      Ok((nameTok, s1)) ->
+        match expect(s1, EQUALS, "Expected '='") with
+          Ok((_, s2)) ->
+            match parseExpr(s2) with
+              Ok((value, s3)) ->
+                let (mComma, s4) = matchToken(s3, [COMMA])
+                in parseRecordUpdates(s4, updates ++ [{ name: getTokenString(nameTok), value: value }])
+              Err(e) -> Err(e)
+          Err(e) -> Err(e)
+      Err(e) -> Err(e)
+
+-- ============ Pattern Parsing ============
+
+-- Parse pattern (entry point)
+def parsePattern(state: ParserState) : Result ParseError (Pattern, ParserState) =
+  parseConsPattern(state)
+
+-- Parse cons pattern (::)
+def parseConsPattern(state: ParserState) : Result ParseError (Pattern, ParserState) =
+  match parseAtomPattern(state) with
+    Ok((left, s1)) ->
+      let (mCons, s2) = matchToken(s1, [DOUBLE_COLON])
+      in match mCons with
+        Just(_) ->
+          match parseConsPattern(s2) with
+            Ok((right, s3)) -> Ok((ConsPattern({ head: left, tail: right }), s3))
+            Err(e) -> Err(e)
+        Nothing -> Ok((left, s1))
+    Err(e) -> Err(e)
+
+-- Parse atomic pattern
+def parseAtomPattern(state: ParserState) : Result ParseError (Pattern, ParserState) =
+  -- Integer pattern
+  let (mInt, s1) = matchToken(state, [INT])
+  in match mInt with
+    Just(tok) -> Ok((IntPattern(getTokenInt(tok)), s1))
+    Nothing ->
+      -- Float pattern
+      let (mFloat, s2) = matchToken(state, [FLOAT])
+      in match mFloat with
+        Just(tok) -> Ok((FloatPattern(getTokenFloat(tok)), s2))
+        Nothing ->
+          -- String pattern
+          let (mString, s3) = matchToken(state, [STRING])
+          in match mString with
+            Just(tok) -> Ok((StringPattern(getTokenString(tok)), s3))
+            Nothing ->
+              -- Char pattern
+              let (mChar, s4) = matchToken(state, [CHAR])
+              in match mChar with
+                Just(tok) -> Ok((CharPattern(getTokenChar(tok)), s4))
+                Nothing ->
+                  -- Bool patterns
+                  let (mTrue, s5) = matchToken(state, [TRUE])
+                  in match mTrue with
+                    Just(_) -> Ok((BoolPattern(True), s5))
+                    Nothing ->
+                      let (mFalse, s6) = matchToken(state, [FALSE])
+                      in match mFalse with
+                        Just(_) -> Ok((BoolPattern(False), s6))
+                        Nothing ->
+                          -- Wildcard pattern
+                          let (mWildcard, s7) = matchToken(state, [UNDERSCORE])
+                          in match mWildcard with
+                            Just(_) -> Ok((WildcardPattern, s7))
+                            Nothing ->
+                              -- List pattern
+                              let (mLBracket, s8) = matchToken(state, [LBRACKET])
+                              in match mLBracket with
+                                Just(_) ->
+                                  if check(s8, [RBRACKET]) then
+                                    Ok((ListPattern([]), advance(s8)))
+                                  else
+                                    match parsePatternListElements(s8, []) with
+                                      Ok((elements, s9)) ->
+                                        match expect(s9, RBRACKET, "Expected ']'") with
+                                          Ok((_, s10)) -> Ok((ListPattern(elements), s10))
+                                          Err(e) -> Err(e)
+                                      Err(e) -> Err(e)
+                                Nothing ->
+                                  -- Tuple or parenthesized pattern
+                                  let (mLParen, s9) = matchToken(state, [LPAREN])
+                                  in match mLParen with
+                                    Just(_) ->
+                                      if check(s9, [RPAREN]) then
+                                        Ok((TuplePattern([]), advance(s9)))
+                                      else
+                                        match parsePattern(s9) with
+                                          Ok((first, s10)) ->
+                                            let (mComma, s11) = matchToken(s10, [COMMA])
+                                            in match mComma with
+                                              Just(_) ->
+                                                match parsePatternTupleElements(s11, [first]) with
+                                                  Ok((elements, s12)) ->
+                                                    match expect(s12, RPAREN, "Expected ')'") with
+                                                      Ok((_, s13)) -> Ok((TuplePattern(elements), s13))
+                                                      Err(e) -> Err(e)
+                                                  Err(e) -> Err(e)
+                                              Nothing ->
+                                                match expect(s10, RPAREN, "Expected ')'") with
+                                                  Ok((_, s11)) -> Ok((first, s11))
+                                                  Err(e) -> Err(e)
+                                          Err(e) -> Err(e)
+                                    Nothing ->
+                                      -- Variable pattern
+                                      match expect(state, IDENT, "Expected pattern") with
+                                        Ok((nameTok, s10)) -> Ok((VarPattern(getTokenString(nameTok)), s10))
+                                        Err(e) -> Err(e)
+
+-- Parse pattern list elements
+def parsePatternListElements(state: ParserState, elements: List Pattern) : Result ParseError (List Pattern, ParserState) =
+  match parsePattern(state) with
+    Ok((elem, s1)) ->
+      let (mComma, s2) = matchToken(s1, [COMMA])
+      in match mComma with
+        Just(_) -> parsePatternListElements(s2, elements ++ [elem])
+        Nothing -> Ok((elements ++ [elem], s1))
+    Err(e) -> Err(e)
+
+-- Parse pattern tuple elements
+def parsePatternTupleElements(state: ParserState, elements: List Pattern) : Result ParseError (List Pattern, ParserState) =
+  if check(state, [RPAREN]) then
+    Ok((elements, state))
+  else
+    match parsePattern(state) with
+      Ok((elem, s1)) ->
+        let (mComma, s2) = matchToken(s1, [COMMA])
+        in parsePatternTupleElements(s2, elements ++ [elem])
+      Err(e) -> Err(e)
