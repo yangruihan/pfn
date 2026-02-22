@@ -1,6 +1,18 @@
 from pfn.codegen import CodeGenerator
 from pfn.lexer import Lexer
 from pfn.parser import Parser
+from pfn.python import (
+    python_type_to_pfn,
+    pfn_type_to_python,
+    infer_python_function_type,
+    export,
+    is_exported,
+    get_export_name,
+    get_export_registry,
+    inspect_python_module,
+    py_import,
+)
+from pfn.types import TInt, TFloat, TString, TBool, TList, TTuple, TFun
 
 
 class TestPythonImport:

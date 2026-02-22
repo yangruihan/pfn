@@ -74,6 +74,23 @@ class TList(Type):
 
 
 @dataclass(frozen=True)
+class TDict(Type):
+    key: Type
+    value: Type
+
+    def __str__(self) -> str:
+        return f"Dict {self.key} {self.value}"
+
+
+@dataclass(frozen=True)
+class TSet(Type):
+    elem: Type
+
+    def __str__(self) -> str:
+        return f"Set {self.elem}"
+
+
+@dataclass(frozen=True)
 class TTuple(Type):
     elements: tuple[Type, ...]
 
