@@ -1,0 +1,244 @@
+-- Pfn Bootstrap: Token Types
+-- Token definitions for the Pfn lexer
+
+module Bootstrap.Token
+
+-- Token type enumeration
+type TokenType
+  -- Literals
+  | INT
+  | FLOAT
+  | STRING
+  | CHAR
+
+  -- Identifiers and keywords
+  | IDENT
+  | KW_DEF
+  | KW_LET
+  | KW_IN
+  | KW_IF
+  | KW_THEN
+  | KW_ELSE
+  | KW_MATCH
+  | KW_WITH
+  | KW_TYPE
+  | KW_INTERFACE
+  | KW_IMPL
+  | KW_IMPORT
+  | KW_EXPORT
+  | KW_MODULE
+  | KW_AS
+  | KW_EFFECT
+  | KW_HANDLER
+  | KW_HANDLE
+  | KW_DO
+  | KW_FORALL
+  | KW_EXISTS
+  | KW_DATA
+  | KW_FAMILY
+  | KW_WHERE
+  | KW_FN
+  | KW_GADT
+  | TRUE
+  | FALSE
+
+  -- Operators
+  | PLUS
+  | MINUS
+  | STAR
+  | SLASH
+  | PERCENT
+  | ARROW
+  | FAT_ARROW
+  | DOUBLE_COLON
+  | EQUALS
+  | EQ
+  | NEQ
+  | LT
+  | LE
+  | GT
+  | GE
+  | PIPE
+  | DOUBLE_PIPE
+  | AMP
+  | DOUBLE_AMP
+  | LEFT_ARROW
+  | DOUBLE_PLUS
+  | BANG
+  | AT
+
+  -- Punctuation
+  | LPAREN
+  | RPAREN
+  | LBRACKET
+  | RBRACKET
+  | LBRACE
+  | RBRACE
+  | COMMA
+  | COLON
+  | DOT
+  | UNDERSCORE
+  | SEMICOLON
+  | BACKTICK
+
+  -- Special
+  | NEWLINE
+  | EOF
+
+-- Source span for error reporting
+type Span = {
+  start: Int,
+  end: Int,
+  line: Int,
+  column: Int
+}
+
+-- Token with type, value, and location
+type Token = {
+  tokenType: TokenType,
+  value: TokenValue,
+  span: Span
+}
+
+-- Token value can be different types
+type TokenValue
+  | IntValue Int
+  | FloatValue Float
+  | StringValue String
+  | CharValue Char
+  | NoValue
+
+-- Keywords mapping
+def keywords : Dict String TokenType =
+  Dict.fromList [
+    ("def", KW_DEF),
+    ("let", KW_LET),
+    ("in", KW_IN),
+    ("if", KW_IF),
+    ("then", KW_THEN),
+    ("else", KW_ELSE),
+    ("match", KW_MATCH),
+    ("with", KW_WITH),
+    ("type", KW_TYPE),
+    ("gadt", KW_GADT),
+    ("interface", KW_INTERFACE),
+    ("impl", KW_IMPL),
+    ("import", KW_IMPORT),
+    ("export", KW_EXPORT),
+    ("module", KW_MODULE),
+    ("as", KW_AS),
+    ("effect", KW_EFFECT),
+    ("handler", KW_HANDLER),
+    ("handle", KW_HANDLE),
+    ("do", KW_DO),
+    ("forall", KW_FORALL),
+    ("exists", KW_EXISTS),
+    ("data", KW_DATA),
+    ("family", KW_FAMILY),
+    ("where", KW_WHERE),
+    ("fn", KW_FN),
+    ("True", TRUE),
+    ("False", FALSE)
+  ]
+
+-- Lookup keyword by name
+def lookupKeyword(name: String) : Maybe TokenType =
+  Dict.lookup(name, keywords)
+
+-- Create a span
+def makeSpan(start: Int, end: Int, line: Int, column: Int) : Span =
+  { start: start, end: end, line: line, column: column }
+
+-- Create a token with no value
+def token(tt: TokenType, span: Span) : Token =
+  { tokenType: tt, value: NoValue, span: span }
+
+-- Create a token with string value
+def stringToken(tt: TokenType, value: String, span: Span) : Token =
+  { tokenType: tt, value: StringValue(value), span: span }
+
+-- Create a token with int value
+def intToken(value: Int, span: Span) : Token =
+  { tokenType: INT, value: IntValue(value), span: span }
+
+-- Create a token with float value
+def floatToken(value: Float, span: Span) : Token =
+  { tokenType: FLOAT, value: FloatValue(value), span: span }
+
+-- Create a token with char value
+def charToken(value: Char, span: Span) : Token =
+  { tokenType: CHAR, value: CharValue(value), span: span }
+
+-- Get token type name for display
+def tokenTypeName(tt: TokenType) : String =
+  match tt with
+    INT -> "INT"
+    FLOAT -> "FLOAT"
+    STRING -> "STRING"
+    CHAR -> "CHAR"
+    IDENT -> "IDENT"
+    KW_DEF -> "KW_DEF"
+    KW_LET -> "KW_LET"
+    KW_IN -> "KW_IN"
+    KW_IF -> "KW_IF"
+    KW_THEN -> "KW_THEN"
+    KW_ELSE -> "KW_ELSE"
+    KW_MATCH -> "KW_MATCH"
+    KW_WITH -> "KW_WITH"
+    KW_TYPE -> "KW_TYPE"
+    KW_INTERFACE -> "KW_INTERFACE"
+    KW_IMPL -> "KW_IMPL"
+    KW_IMPORT -> "KW_IMPORT"
+    KW_EXPORT -> "KW_EXPORT"
+    KW_MODULE -> "KW_MODULE"
+    KW_AS -> "KW_AS"
+    KW_EFFECT -> "KW_EFFECT"
+    KW_HANDLER -> "KW_HANDLER"
+    KW_HANDLE -> "KW_HANDLE"
+    KW_DO -> "KW_DO"
+    KW_FORALL -> "KW_FORALL"
+    KW_EXISTS -> "KW_EXISTS"
+    KW_DATA -> "KW_DATA"
+    KW_FAMILY -> "KW_FAMILY"
+    KW_WHERE -> "KW_WHERE"
+    KW_FN -> "KW_FN"
+    KW_GADT -> "KW_GADT"
+    TRUE -> "TRUE"
+    FALSE -> "FALSE"
+    PLUS -> "PLUS"
+    MINUS -> "MINUS"
+    STAR -> "STAR"
+    SLASH -> "SLASH"
+    PERCENT -> "PERCENT"
+    ARROW -> "ARROW"
+    FAT_ARROW -> "FAT_ARROW"
+    DOUBLE_COLON -> "DOUBLE_COLON"
+    EQUALS -> "EQUALS"
+    EQ -> "EQ"
+    NEQ -> "NEQ"
+    LT -> "LT"
+    LE -> "LE"
+    GT -> "GT"
+    GE -> "GE"
+    PIPE -> "PIPE"
+    DOUBLE_PIPE -> "DOUBLE_PIPE"
+    AMP -> "AMP"
+    DOUBLE_AMP -> "DOUBLE_AMP"
+    LEFT_ARROW -> "LEFT_ARROW"
+    DOUBLE_PLUS -> "DOUBLE_PLUS"
+    BANG -> "BANG"
+    AT -> "AT"
+    LPAREN -> "LPAREN"
+    RPAREN -> "RPAREN"
+    LBRACKET -> "LBRACKET"
+    RBRACKET -> "RBRACKET"
+    LBRACE -> "LBRACE"
+    RBRACE -> "RBRACE"
+    COMMA -> "COMMA"
+    COLON -> "COLON"
+    DOT -> "DOT"
+    UNDERSCORE -> "UNDERSCORE"
+    SEMICOLON -> "SEMICOLON"
+    BACKTICK -> "BACKTICK"
+    NEWLINE -> "NEWLINE"
+    EOF -> "EOF"
