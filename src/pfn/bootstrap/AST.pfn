@@ -1,0 +1,473 @@
+-- Pfn Bootstrap: AST Types
+-- Abstract Syntax Tree definitions for Pfn
+
+module Bootstrap.AST
+
+import Bootstrap.Token (Span)
+
+-- ============ Type References ============
+
+type TypeRef
+  | SimpleTypeRef SimpleTypeRefData
+  | FunTypeRef FunTypeRefData
+  | TupleTypeRef TupleTypeRefData
+  | RecordTypeRef RecordTypeRefData
+
+type SimpleTypeRefData = {
+  name: String,
+  args: List TypeRef
+}
+
+type FunTypeRefData = {
+  param: TypeRef,
+  result: TypeRef
+}
+
+type TupleTypeRefData = {
+  elements: List TypeRef
+}
+
+type RecordTypeRefData = {
+  fields: List (String, TypeRef)
+}
+
+-- Function parameter
+type Param = {
+  name: String,
+  typeAnnotation: Maybe TypeRef
+}
+
+-- ============ Patterns ============
+
+type Pattern
+  | IntPattern Int
+  | FloatPattern Float
+  | StringPattern String
+  | CharPattern Char
+  | BoolPattern Bool
+  | VarPattern String
+  | WildcardPattern
+  | ConsPattern ConsPatternData
+  | ListPattern (List Pattern)
+  | TuplePattern (List Pattern)
+  | RecordPattern (List (String, Pattern))
+  | ConstructorPattern ConstructorPatternData
+
+type ConsPatternData = {
+  head: Pattern,
+  tail: Pattern
+}
+
+type ConstructorPatternData = {
+  name: String,
+  args: List Pattern
+}
+
+-- ============ Expressions ============
+
+type Expr
+  -- Literals
+  | IntLit Int
+  | FloatLit Float
+  | StringLit String
+  | CharLit Char
+  | BoolLit Bool
+  | UnitLit
+  -- Variables
+  | Var String
+  -- Functions
+  | Lambda LambdaData
+  | App AppData
+  -- Operators
+  | BinOp BinOpData
+  | UnaryOp UnaryOpData
+  -- Control flow
+  | If IfData
+  | Let LetData
+  | LetFunc LetFuncData
+  | Match MatchData
+  -- Do notation
+  | DoNotation DoNotationData
+  -- Collections
+  | ListLit (List Expr)
+  | TupleLit (List Expr)
+  | RecordLit (List RecordField)
+  -- Access
+  | FieldAccess FieldAccessData
+  | RecordUpdate RecordUpdateData
+  | IndexAccess IndexAccessData
+  | Slice SliceData
+  -- Effects
+  | HandleExpr HandleExprData
+  | PerformExpr PerformExprData
+
+type LambdaData = {
+  params: List Param,
+  body: Expr
+}
+
+type AppData = {
+  func: Expr,
+  args: List Expr
+}
+
+type BinOpData = {
+  left: Expr,
+  op: String,
+  right: Expr
+}
+
+type UnaryOpData = {
+  op: String,
+  operand: Expr
+}
+
+type IfData = {
+  cond: Expr,
+  thenBranch: Expr,
+  elseBranch: Expr
+}
+
+type LetData = {
+  name: String,
+  value: Expr,
+  body: Expr
+}
+
+type LetFuncData = {
+  name: String,
+  params: List Param,
+  value: Expr,
+  body: Expr
+}
+
+type MatchData = {
+  scrutinee: Expr,
+  cases: List MatchCase
+}
+
+type MatchCase = {
+  pattern: Pattern,
+  body: Expr,
+  guard: Maybe Expr
+}
+
+type DoNotationData = {
+  bindings: List DoBinding,
+  body: Expr
+}
+
+type DoBinding = {
+  name: String,
+  value: Expr
+}
+
+type RecordField = {
+  name: String,
+  value: Expr
+}
+
+type FieldAccessData = {
+  expr: Expr,
+  field: String
+}
+
+type RecordUpdateData = {
+  record: Expr,
+  updates: List RecordField
+}
+
+type IndexAccessData = {
+  expr: Expr,
+  index: Expr
+}
+
+type SliceData = {
+  expr: Expr,
+  start: Maybe Expr,
+  end: Maybe Expr,
+  step: Maybe Expr
+}
+
+type HandleExprData = {
+  expr: Expr,
+  handlerCases: List HandlerCase,
+  handlerName: Maybe String
+}
+
+type PerformExprData = {
+  effectName: String,
+  opName: String,
+  args: List Expr
+}
+
+-- ============ Declarations ============
+
+type Decl
+  | DefDecl DefDeclData
+  | TypeDecl TypeDeclData
+  | TypeAliasDecl TypeAliasDeclData
+  | ImportDecl ImportDeclData
+  | ExportDecl ExportDeclData
+  | InterfaceDecl InterfaceDeclData
+  | ImplDecl ImplDeclData
+  | EffectDecl EffectDeclData
+  | HandlerDecl HandlerDeclData
+
+type DefDeclData = {
+  name: String,
+  params: List Param,
+  body: Expr,
+  returnType: Maybe TypeRef,
+  isExported: Bool,
+  exportName: Maybe String
+}
+
+type TypeDeclData = {
+  name: String,
+  params: List String,
+  constructors: List Constructor,
+  isRecord: Bool,
+  recordFields: List (String, TypeRef),
+  isGadt: Bool
+}
+
+type Constructor = {
+  name: String,
+  fields: List TypeRef
+}
+
+type GADTConstructor = {
+  name: String,
+  params: List TypeRef,
+  resultType: TypeRef
+}
+
+type TypeAliasDeclData = {
+  name: String,
+  params: List String,
+  typeRef: TypeRef
+}
+
+type ImportDeclData = {
+  module: String,
+  alias: Maybe String,
+  exposing: Maybe (List String),
+  isPython: Bool
+}
+
+type ExportDeclData = {
+  names: List String
+}
+
+type InterfaceDeclData = {
+  name: String,
+  params: List String,
+  methods: List InterfaceMethod,
+  superclasses: List String
+}
+
+type InterfaceMethod = {
+  name: String,
+  type: TypeRef
+}
+
+type ImplDeclData = {
+  className: String,
+  typeRef: TypeRef,
+  methods: List ImplMethod
+}
+
+type ImplMethod = {
+  name: String,
+  params: List Param,
+  body: Expr
+}
+
+type EffectDeclData = {
+  name: String,
+  operations: List EffectOp
+}
+
+type EffectOp = {
+  name: String,
+  type: TypeRef
+}
+
+type HandlerDeclData = {
+  effectName: String,
+  handlers: List HandlerCase,
+  returnType: Maybe TypeRef
+}
+
+type HandlerCase = {
+  opName: String,
+  body: Expr,
+  params: List Param,
+  resumeParam: Maybe String
+}
+
+-- ============ Module ============
+
+type Module = {
+  name: Maybe String,
+  declarations: List Decl
+}
+
+-- ============ Helper Functions ============
+
+-- Create a simple type reference
+def simpleType(name: String) : TypeRef =
+  SimpleTypeRef({ name: name, args: [] })
+
+-- Create a type reference with arguments
+def typeApp(name: String, args: List TypeRef) : TypeRef =
+  SimpleTypeRef({ name: name, args: args })
+
+-- Create a function type reference
+def funType(param: TypeRef, result: TypeRef) : TypeRef =
+  FunTypeRef({ param: param, result: result })
+
+-- Create a tuple type reference
+def tupleType(elements: List TypeRef) : TypeRef =
+  TupleTypeRef({ elements: elements })
+
+-- Create a record type reference
+def recordType(fields: List (String, TypeRef)) : TypeRef =
+  RecordTypeRef({ fields: fields })
+
+-- Create a parameter without type annotation
+def param(name: String) : Param =
+  { name: name, typeAnnotation: Nothing }
+
+-- Create a parameter with type annotation
+def typedParam(name: String, typeRef: TypeRef) : Param =
+  { name: name, typeAnnotation: Just(typeRef) }
+
+-- Create a variable expression
+def var(name: String) : Expr =
+  Var(name)
+
+-- Create an integer literal
+def intLit(value: Int) : Expr =
+  IntLit(value)
+
+-- Create a float literal
+def floatLit(value: Float) : Expr =
+  FloatLit(value)
+
+-- Create a string literal
+def stringLit(value: String) : Expr =
+  StringLit(value)
+
+-- Create a bool literal
+def boolLit(value: Bool) : Expr =
+  BoolLit(value)
+
+-- Create a binary operation
+def binOp(left: Expr, op: String, right: Expr) : Expr =
+  BinOp({ left: left, op: op, right: right })
+
+-- Create a function application
+def app(func: Expr, args: List Expr) : Expr =
+  App({ func: func, args: args })
+
+-- Create a lambda
+def lambda(params: List Param, body: Expr) : Expr =
+  Lambda({ params: params, body: body })
+
+-- Create an if expression
+def ifExpr(cond: Expr, thenBranch: Expr, elseBranch: Expr) : Expr =
+  If({ cond: cond, thenBranch: thenBranch, elseBranch: elseBranch })
+
+-- Create a let expression
+def letExpr(name: String, value: Expr, body: Expr) : Expr =
+  Let({ name: name, value: value, body: body })
+
+-- Create a match expression
+def matchExpr(scrutinee: Expr, cases: List MatchCase) : Expr =
+  Match({ scrutinee: scrutinee, cases: cases })
+
+-- Create a match case
+def matchCase(pattern: Pattern, body: Expr) : MatchCase =
+  { pattern: pattern, body: body, guard: Nothing }
+
+-- Create a match case with guard
+def matchCaseWithGuard(pattern: Pattern, body: Expr, guard: Expr) : MatchCase =
+  { pattern: pattern, body: body, guard: Just(guard) }
+
+-- Create a list literal
+def listLit(elements: List Expr) : Expr =
+  ListLit(elements)
+
+-- Create a tuple literal
+def tupleLit(elements: List Expr) : Expr =
+  TupleLit(elements)
+
+-- Create a record literal
+def recordLit(fields: List RecordField) : Expr =
+  RecordLit(fields)
+
+-- Create a record field
+def recordField(name: String, value: Expr) : RecordField =
+  { name: name, value: value }
+
+-- Create a field access
+def fieldAccess(expr: Expr, field: String) : Expr =
+  FieldAccess({ expr: expr, field: field })
+
+-- Create a def declaration
+def defDecl(name: String, params: List Param, body: Expr) : Decl =
+  DefDecl({
+    name: name,
+    params: params,
+    body: body,
+    returnType: Nothing,
+    isExported: False,
+    exportName: Nothing
+  })
+
+-- Create a type declaration
+def typeDecl(name: String, params: List String, constructors: List Constructor) : Decl =
+  TypeDecl({
+    name: name,
+    params: params,
+    constructors: constructors,
+    isRecord: False,
+    recordFields: [],
+    isGadt: False
+  })
+
+-- Create a constructor
+def constructor(name: String, fields: List TypeRef) : Constructor =
+  { name: name, fields: fields }
+
+-- Create an import declaration
+def importDecl(module: String) : Decl =
+  ImportDecl({
+    module: module,
+    alias: Nothing,
+    exposing: Nothing,
+    isPython: False
+  })
+
+-- Create a Python import declaration
+def pythonImport(module: String) : Decl =
+  ImportDecl({
+    module: module,
+    alias: Nothing,
+    exposing: Nothing,
+    isPython: True
+  })
+
+-- Create an empty module
+def emptyModule : Module =
+  { name: Nothing, declarations: [] }
+
+-- Add declaration to module
+def addDecl(decl: Decl, mod: Module) : Module =
+  { mod with declarations = mod.declarations ++ [decl] }
+
+-- Set module name
+def setModuleName(name: String, mod: Module) : Module =
+  { mod with name = Just(name) }
