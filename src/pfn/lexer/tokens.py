@@ -30,6 +30,8 @@ class TokenType(Enum):
     KW_MODULE = auto()
     KW_AS = auto()
     KW_EFFECT = auto()
+    KW_HANDLER = auto()
+    KW_HANDLE = auto()
     KW_DO = auto()
     KW_FORALL = auto()
     KW_EXISTS = auto()
@@ -124,6 +126,8 @@ KEYWORDS: dict[str, TokenType] = {
     "module": TokenType.KW_MODULE,
     "as": TokenType.KW_AS,
     "effect": TokenType.KW_EFFECT,
+    "handler": TokenType.KW_HANDLER,
+    "handle": TokenType.KW_HANDLE,
     "do": TokenType.KW_DO,
     "forall": TokenType.KW_FORALL,
     "exists": TokenType.KW_EXISTS,

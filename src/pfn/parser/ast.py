@@ -384,6 +384,43 @@ class EffectOp:
     type: TypeRef
 
 
+@dataclass
+class HandlerDecl(Decl):
+    """Handler declaration for custom effect handling"""
+
+    effect_name: str
+    handlers: list[HandlerCase] = field(default_factory=list)
+    return_type: TypeRef | None = None
+
+
+@dataclass
+class HandlerCase:
+    """Single handler case for an operation"""
+
+    op_name: str
+    body: Expr
+    params: list[Param] = field(default_factory=list)
+    resume_param: str | None = None
+
+
+@dataclass
+class HandleExpr(Expr):
+    """Handle expression: handle expr with handler"""
+
+    expr: Expr
+    handler_cases: list[HandlerCase] = field(default_factory=list)
+    handler_name: str | None = None
+
+
+@dataclass
+class PerformExpr(Expr):
+    """Perform an effect operation"""
+
+    effect_name: str
+    op_name: str
+    args: list[Expr] = field(default_factory=list)
+
+
 # ============ Module ============
 
 

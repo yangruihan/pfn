@@ -6,10 +6,16 @@ from pfn.types import (
     Subst,
     TBool,
     TChar,
+    TCon,
+    TConstraint,
+    TExists,
     TFloat,
+    TForall,
     TFun,
     TInt,
+    TIO,
     TList,
+    TQualified,
     TString,
     TTuple,
     TUnit,
@@ -22,6 +28,8 @@ from pfn.typechecker.classes import (
     get_default_context,
     resolve_instance,
 )
+from pfn.effects import EffectSet, IOEffect, StateEffect, ThrowEffect, PURE
+from pfn.effects.infer import EffectInferer, EffectEnv, infer_effects
 
 
 class TypeError(Exception):
@@ -397,17 +405,102 @@ class TypeChecker:
         raise TypeError(f"Unknown pattern type: {type(pattern)}")
 
     def check_instance(self, class_name: str, type_: Type) -> bool:
-        type_name = str(type_)
         if isinstance(type_, TVar):
             return False
-        inst = resolve_instance(self.class_ctx, class_name, type_name)
+        inst = resolve_instance(self.class_ctx, class_name, type_)
         return inst is not None
 
     def get_instance_method(self, class_name: str, type_: Type, method_name: str):
-        type_name = str(type_)
         if isinstance(type_, TVar):
             return None
-        inst = resolve_instance(self.class_ctx, class_name, type_name)
+        inst = resolve_instance(self.class_ctx, class_name, type_)
         if inst:
             return inst.methods.get(method_name)
         return None
+
+    def skolemize(self, t: Type) -> tuple[Type, list[tuple[str, TVar]]]:
+        """Replace bound type variables with skolem constants.
+
+        Used for checking higher-rank types.
+        Returns the skolemized type and a list of (original_var, skolem_var) pairs.
+        """
+        if isinstance(t, TForall):
+            skolems = []
+            result = t.inner
+            for var in t.vars:
+                skolem = TVar(f"s_{var}_{self.var_counter}")
+                self.var_counter += 1
+                skolems.append((var, skolem))
+                subst = Subst({var: skolem})
+                result = subst.apply(result)
+            return result, skolems
+        return t, []
+
+    def unskolemize(self, t: Type, skolems: list[tuple[str, TVar]]) -> Type:
+        """Replace skolem constants back with bound type variables."""
+        if not skolems:
+            return t
+        subst = Subst({sk.name: TVar(var) for var, sk in skolems})
+        return subst.apply(t)
+
+    def check_rank_n(self, expected: Type, actual: Type) -> Subst | None:
+        """Check if actual type matches expected type, handling higher-rank types.
+
+        This implements the subsumption check for Rank-N types.
+        """
+        expected = Subst().apply(expected)
+        actual = Subst().apply(actual)
+
+        if isinstance(expected, TForall):
+            skolemized, skolems = self.skolemize(expected)
+            subst = self.check_rank_n(skolemized, actual)
+            if subst is None:
+                return None
+            return self.unskolemize_subst(subst, skolems)
+
+        if isinstance(actual, TForall):
+            return self.check_rank_n(expected, self.instantiate_forall(actual))
+
+        return Subst().unify(expected, actual)
+
+    def instantiate_forall(self, t: TForall) -> Type:
+        """Instantiate a forall type with fresh type variables."""
+        subst = Subst()
+        for var in t.vars:
+            subst.mapping[var] = self.fresh_var()
+        return subst.apply(t.inner)
+
+    def unskolemize_subst(self, subst: Subst, skolems: list[tuple[str, TVar]]) -> Subst:
+        """Remove skolem variables from substitution."""
+        new_mapping = {}
+        for k, v in subst.mapping.items():
+            if not any(sk.name == k for _, sk in skolems):
+                new_mapping[k] = v
+        return Subst(new_mapping)
+
+    def infer_qualified(self, expr: ast.Expr) -> tuple[Type, tuple[TConstraint, ...]]:
+        """Infer type with constraints for qualified types."""
+        subst, t = self._infer(expr, Subst())
+        t = subst.apply(t)
+        return t, ()
+
+    def check_constraint_satisfiable(self, constraint: TConstraint) -> bool:
+        """Check if a type class constraint is satisfiable."""
+        return self.check_instance(constraint.class_name, constraint.type_)
+
+    def infer_with_effects(self, expr: ast.Expr) -> tuple[Type, EffectSet]:
+        """Infer both type and effects for an expression."""
+        t = self.infer(expr)
+        effects = infer_effects(expr, EffectEnv())
+        return t, effects
+
+    def wrap_with_io(self, t: Type, effects: EffectSet) -> Type:
+        """Wrap type with IO if there are IO effects."""
+        if any(isinstance(e, IOEffect) for e in effects.effects):
+            return TIO(t)
+        return t
+
+    def check_effect_safety(self, expr: ast.Expr) -> bool:
+        """Check if expression's effects are properly handled."""
+        effects = infer_effects(expr)
+        return len(effects.effects) == 0

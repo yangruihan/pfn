@@ -3,6 +3,7 @@ from pfn.effects import (
     IOEffect,
     StateEffect,
     ThrowEffect,
+    ReadEffect,
     EffectSet,
     PURE,
     IOHandler,
@@ -11,6 +12,20 @@ from pfn.effects import (
     run_io,
     run_state,
     run_throw,
+)
+from pfn.effects.infer import (
+    EffectInferer,
+    EffectEnv,
+    infer_effects,
+    is_pure,
+    get_effect_names,
+)
+from pfn.effects.handlers import (
+    HandlerContext,
+    HandlerRegistry,
+    HandlerBuilder,
+    handler,
+    get_handler_registry,
 )
 
 
@@ -122,3 +137,89 @@ class TestRunners:
         result = run_throw(action)
         assert isinstance(result, ValueError)
         assert str(result) == "test error"
+
+
+class TestEffectInference:
+    def test_infer_pure_int(self):
+        from pfn.parser import ast
+
+        expr = ast.IntLit(42)
+        effects = infer_effects(expr)
+        assert is_pure(expr)
+
+    def test_infer_pure_string(self):
+        from pfn.parser import ast
+
+        expr = ast.StringLit("hello")
+        assert is_pure(expr)
+
+    def test_infer_pure_lambda(self):
+        from pfn.parser import ast
+
+        expr = ast.Lambda([ast.Param("x")], ast.Var("x"))
+        assert is_pure(expr)
+
+    def test_infer_pure_let(self):
+        from pfn.parser import ast
+
+        expr = ast.Let("x", ast.IntLit(1), ast.Var("x"))
+        assert is_pure(expr)
+
+    def test_infer_pure_if(self):
+        from pfn.parser import ast
+
+        expr = ast.If(ast.BoolLit(True), ast.IntLit(1), ast.IntLit(2))
+        assert is_pure(expr)
+
+    def test_infer_pure_list(self):
+        from pfn.parser import ast
+
+        expr = ast.ListLit([ast.IntLit(1), ast.IntLit(2)])
+        assert is_pure(expr)
+
+    def test_effect_env(self):
+        env = EffectEnv()
+        env = env.extend("x", PURE)
+        result = env.lookup("x")
+        assert result == PURE
+
+    def test_get_effect_names(self):
+        es = EffectSet(frozenset({IOEffect(), StateEffect(int)}))
+        names = get_effect_names(es)
+        assert "IO" in names
+        assert "State" in names
+
+
+class TestHandlerRegistry:
+    def test_get_registry(self):
+        registry = get_handler_registry()
+        assert registry is not None
+
+    def test_handler_builder(self):
+        builder = handler("IO")
+
+        @builder.handle("input")
+        def handle_input(prompt, resume):
+            return resume("test")
+
+        ctx = builder.build()
+        assert "input" in ctx.operations
+
+
+class TestEffectInferer:
+    def test_inferer_creation(self):
+        inferer = EffectInferer()
+        assert inferer.env is not None
+
+    def test_inferer_register_effect(self):
+        inferer = EffectInferer()
+        inferer.register_effect("Custom", ["op1", "op2"])
+        assert "Custom" in inferer.effect_decls
+        assert "op1" in inferer.effect_decls["Custom"]
+
+    def test_inferer_handler_stack(self):
+        inferer = EffectInferer()
+        inferer.push_handler("IO")
+        assert inferer.check_effect_handled(IOEffect())
+        inferer.pop_handler()
+        assert not inferer.check_effect_handled(IOEffect())
