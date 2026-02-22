@@ -8,6 +8,7 @@ from pfn.codegen import CodeGenerator
 from pfn.lexer import Lexer
 from pfn.parser import Parser
 from pfn.parser.ast import DefDecl
+from pfn.repl import start_repl
 from pfn.typechecker import TypeChecker, TypeError as PfnTypeError
 from pfn.types import Scheme, TInt, Subst, TypeEnv, TVar, TFun
 
@@ -121,6 +122,8 @@ def main(argv: list[str] | None = None) -> int:
     check_parser = subparsers.add_parser("check", help="Type check Pfn file")
     check_parser.add_argument("input", type=Path, help="Input .pfn file")
 
+    repl_parser = subparsers.add_parser("repl", help="Start interactive REPL")
+
     args = parser.parse_args(argv)
 
     if args.command == "compile":
@@ -157,6 +160,10 @@ def main(argv: list[str] | None = None) -> int:
         ok, msg = typecheck_source(source)
         print(msg)
         return 0 if ok else 1
+
+    if args.command == "repl":
+        start_repl()
+        return 0
 
     parser.print_help()
     return 1
