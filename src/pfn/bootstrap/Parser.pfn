@@ -741,3 +741,365 @@ def parseRecordFields(state: ParserState, fields: List (String, TypeRef)) : Resu
             Err(e) -> Err(e)
         Err(e) -> Err(e)
     Err(e) -> Err(e)
+
+-- ============ Expression Parsing ============
+
+-- Parse expression (entry point)
+def parseExpr(state: ParserState) : Result ParseError (Expr, ParserState) =
+  parseLet(state)
+
+-- Parse let expression
+def parseLet(state: ParserState) : Result ParseError (Expr, ParserState) =
+  let (mLet, s1) = matchToken(state, [KW_LET])
+  in match mLet with
+    Just(_) ->
+      match expect(s1, IDENT, "Expected variable name") with
+        Ok((nameTok, s2)) ->
+          let name = getTokenString(nameTok)
+          in match parseLetParams(s2, []) with
+            Ok((params, s3)) ->
+              match expect(s3, EQUALS, "Expected '=' after let binding") with
+                Ok((_, s4)) ->
+                  match parseExpr(s4) with
+                    Ok((value, s5)) ->
+                      let (mIn, s6) = matchToken(s5, [KW_IN])
+                      in match parseExpr(s6) with
+                        Ok((body, s7)) ->
+                          if List.isEmpty(params) then
+                            Ok((Let({ name: name, value: value, body: body }), s7))
+                          else
+                            Ok((LetFunc({ name: name, params: params, value: value, body: body }), s7))
+                        Err(e) -> Err(e)
+                    Err(e) -> Err(e)
+                Err(e) -> Err(e)
+            Err(e) -> Err(e)
+        Err(e) -> Err(e)
+    Nothing -> parseDo(state)
+
+-- Parse let parameters
+def parseLetParams(state: ParserState, params: List Param) : Result ParseError (List Param, ParserState) =
+  if check(state, [IDENT, LPAREN]) then
+    let (mLParen, s1) = matchToken(state, [LPAREN])
+    in match mLParen with
+      Just(_) ->
+        match parseParam(s1) with
+          Ok((param, s2)) ->
+            match expect(s2, RPAREN, "Expected ')'") with
+              Ok((_, s3)) -> parseLetParams(s3, params ++ [param])
+              Err(e) -> Err(e)
+          Err(e) -> Err(e)
+      Nothing ->
+        match parseParam(state) with
+          Ok((param, s1)) -> parseLetParams(s1, params ++ [param])
+          Err(e) -> Err(e)
+  else
+    Ok((params, state))
+
+-- Parse do notation
+def parseDo(state: ParserState) : Result ParseError (Expr, ParserState) =
+  let (mDo, s1) = matchToken(state, [KW_DO])
+  in match mDo with
+    Just(_) ->
+      match parseDoBindings(s1, []) with
+        Ok((bindings, s2)) ->
+          let (mIn, s3) = matchToken(s2, [KW_IN])
+          in match parseExpr(s3) with
+            Ok((body, s4)) -> Ok((DoNotation({ bindings: bindings, body: body }), s4))
+            Err(e) -> Err(e)
+        Err(e) -> Err(e)
+    Nothing -> parseIf(state)
+
+-- Parse do bindings
+def parseDoBindings(state: ParserState, bindings: List DoBinding) : Result ParseError (List DoBinding, ParserState) =
+  if check(state, [KW_IN]) then
+    Ok((bindings, state))
+  else
+    match expect(state, IDENT, "Expected variable name in do binding") with
+      Ok((nameTok, s1)) ->
+        let (mArrow, s2) = matchToken(s1, [LEFT_ARROW])
+        in match parseExpr(s2) with
+          Ok((value, s3)) ->
+            parseDoBindings(s3, bindings ++ [{ name: getTokenString(nameTok), value: value }])
+          Err(e) -> Err(e)
+      Err(e) -> Err(e)
+
+-- Parse if expression
+def parseIf(state: ParserState) : Result ParseError (Expr, ParserState) =
+  let (mIf, s1) = matchToken(state, [KW_IF])
+  in match mIf with
+    Just(_) ->
+      match parseExpr(s1) with
+        Ok((cond, s2)) ->
+          match expect(s2, KW_THEN, "Expected 'then'") with
+            Ok((_, s3)) ->
+              match parseExpr(s3) with
+                Ok((thenBranch, s4)) ->
+                  match expect(s4, KW_ELSE, "Expected 'else'") with
+                    Ok((_, s5)) ->
+                      match parseExpr(s5) with
+                        Ok((elseBranch, s6)) ->
+                          Ok((If({ cond: cond, thenBranch: thenBranch, elseBranch: elseBranch }), s6))
+                        Err(e) -> Err(e)
+                    Err(e) -> Err(e)
+                Err(e) -> Err(e)
+            Err(e) -> Err(e)
+        Err(e) -> Err(e)
+    Nothing -> parseMatch(state)
+
+-- Parse match expression
+def parseMatch(state: ParserState) : Result ParseError (Expr, ParserState) =
+  let (mMatch, s1) = matchToken(state, [KW_MATCH])
+  in match mMatch with
+    Just(_) ->
+      match parseExpr(s1) with
+        Ok((scrutinee, s2)) ->
+          match expect(s2, KW_WITH, "Expected 'with'") with
+            Ok((_, s3)) ->
+              match parseMatchCases(s3, []) with
+                Ok((cases, s4)) -> Ok((Match({ scrutinee: scrutinee, cases: cases }), s4))
+                Err(e) -> Err(e)
+            Err(e) -> Err(e)
+        Err(e) -> Err(e)
+    Nothing -> parseOr(state)
+
+-- Parse match cases
+def parseMatchCases(state: ParserState, cases: List MatchCase) : Result ParseError (List MatchCase, ParserState) =
+  let (mPipe, s1) = matchToken(state, [PIPE])
+  in match mPipe with
+    Just(_) ->
+      match parsePattern(s1) with
+        Ok((pattern, s2)) ->
+          let (mGuard, s3) = matchToken(s2, [KW_IF])
+          in match mGuard with
+            Just(_) ->
+              match parseExpr(s3) with
+                Ok((guard, s4)) ->
+                  match expect(s4, ARROW, "Expected '->'") with
+                    Ok((_, s5)) ->
+                      match parseExpr(s5) with
+                        Ok((body, s6)) ->
+                          parseMatchCases(s6, cases ++ [{ pattern: pattern, body: body, guard: Just(guard) }])
+                        Err(e) -> Err(e)
+                    Err(e) -> Err(e)
+                Err(e) -> Err(e)
+            Nothing ->
+              match expect(s3, ARROW, "Expected '->'") with
+                Ok((_, s4)) ->
+                  match parseExpr(s4) with
+                    Ok((body, s5)) ->
+                      parseMatchCases(s5, cases ++ [{ pattern: pattern, body: body, guard: Nothing }])
+                    Err(e) -> Err(e)
+                Err(e) -> Err(e)
+        Err(e) -> Err(e)
+    Nothing -> Ok((cases, state))
+
+-- Parse or expression (||)
+def parseOr(state: ParserState) : Result ParseError (Expr, ParserState) =
+  match parseAnd(state) with
+    Ok((left, s1)) ->
+      match parseOrLoop(s1, left) with
+        Ok((expr, s2)) -> Ok((expr, s2))
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+def parseOrLoop(state: ParserState, left: Expr) : Result ParseError (Expr, ParserState) =
+  let (mOr, s1) = matchToken(state, [DOUBLE_PIPE])
+  in match mOr with
+    Just(_) ->
+      match parseAnd(s1) with
+        Ok((right, s2)) -> parseOrLoop(s2, BinOp({ left: left, op: "||", right: right }))
+        Err(e) -> Err(e)
+    Nothing -> Ok((left, state))
+
+-- Parse and expression (&&)
+def parseAnd(state: ParserState) : Result ParseError (Expr, ParserState) =
+  match parseComparison(state) with
+    Ok((left, s1)) ->
+      match parseAndLoop(s1, left) with
+        Ok((expr, s2)) -> Ok((expr, s2))
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+def parseAndLoop(state: ParserState, left: Expr) : Result ParseError (Expr, ParserState) =
+  let (mAnd, s1) = matchToken(state, [DOUBLE_AMP])
+  in match mAnd with
+    Just(_) ->
+      match parseComparison(s1) with
+        Ok((right, s2)) -> parseAndLoop(s2, BinOp({ left: left, op: "&&", right: right }))
+        Err(e) -> Err(e)
+    Nothing -> Ok((left, state))
+
+-- Parse comparison expression
+def parseComparison(state: ParserState) : Result ParseError (Expr, ParserState) =
+  match parseCons(state) with
+    Ok((left, s1)) ->
+      match parseComparisonLoop(s1, left) with
+        Ok((expr, s2)) -> Ok((expr, s2))
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+def parseComparisonLoop(state: ParserState, left: Expr) : Result ParseError (Expr, ParserState) =
+  let (mOp, s1) = matchToken(state, [EQ, NEQ, LT, LE, GT, GE])
+  in match mOp with
+    Just(opTok) ->
+      match parseCons(s1) with
+        Ok((right, s2)) ->
+          let op = getTokenString(opTok)
+          in parseComparisonLoop(s2, BinOp({ left: left, op: op, right: right }))
+        Err(e) -> Err(e)
+    Nothing -> Ok((left, state))
+
+-- Parse cons expression (::)
+def parseCons(state: ParserState) : Result ParseError (Expr, ParserState) =
+  match parseConcat(state) with
+    Ok((left, s1)) ->
+      let (mCons, s2) = matchToken(s1, [DOUBLE_COLON])
+      in match mCons with
+        Just(_) ->
+          match parseCons(s2) with
+            Ok((right, s3)) -> Ok((BinOp({ left: left, op: "::", right: right }), s3))
+            Err(e) -> Err(e)
+        Nothing -> Ok((left, s1))
+    Err(e) -> Err(e)
+
+-- Parse concat expression (++)
+def parseConcat(state: ParserState) : Result ParseError (Expr, ParserState) =
+  match parseAdditive(state) with
+    Ok((left, s1)) ->
+      match parseConcatLoop(s1, left) with
+        Ok((expr, s2)) -> Ok((expr, s2))
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+def parseConcatLoop(state: ParserState, left: Expr) : Result ParseError (Expr, ParserState) =
+  let (mConcat, s1) = matchToken(state, [DOUBLE_PLUS])
+  in match mConcat with
+    Just(_) ->
+      match parseAdditive(s1) with
+        Ok((right, s2)) -> parseConcatLoop(s2, BinOp({ left: left, op: "++", right: right }))
+        Err(e) -> Err(e)
+    Nothing -> Ok((left, state))
+
+-- Parse additive expression (+, -)
+def parseAdditive(state: ParserState) : Result ParseError (Expr, ParserState) =
+  match parseMultiplicative(state) with
+    Ok((left, s1)) ->
+      match parseAdditiveLoop(s1, left) with
+        Ok((expr, s2)) -> Ok((expr, s2))
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+def parseAdditiveLoop(state: ParserState, left: Expr) : Result ParseError (Expr, ParserState) =
+  let (mOp, s1) = matchToken(state, [PLUS, MINUS])
+  in match mOp with
+    Just(opTok) ->
+      match parseMultiplicative(s1) with
+        Ok((right, s2)) ->
+          let op = getTokenString(opTok)
+          in parseAdditiveLoop(s2, BinOp({ left: left, op: op, right: right }))
+        Err(e) -> Err(e)
+    Nothing -> Ok((left, state))
+
+-- Parse multiplicative expression (*, /, %)
+def parseMultiplicative(state: ParserState) : Result ParseError (Expr, ParserState) =
+  match parseUnary(state) with
+    Ok((left, s1)) ->
+      match parseMultiplicativeLoop(s1, left) with
+        Ok((expr, s2)) -> Ok((expr, s2))
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+def parseMultiplicativeLoop(state: ParserState, left: Expr) : Result ParseError (Expr, ParserState) =
+  let (mOp, s1) = matchToken(state, [STAR, SLASH, PERCENT])
+  in match mOp with
+    Just(opTok) ->
+      match parseUnary(s1) with
+        Ok((right, s2)) ->
+          let op = getTokenString(opTok)
+          in parseMultiplicativeLoop(s2, BinOp({ left: left, op: op, right: right }))
+        Err(e) -> Err(e)
+    Nothing -> Ok((left, state))
+
+-- Parse unary expression (-, !)
+def parseUnary(state: ParserState) : Result ParseError (Expr, ParserState) =
+  let (mOp, s1) = matchToken(state, [MINUS, BANG])
+  in match mOp with
+    Just(opTok) ->
+      match parseUnary(s1) with
+        Ok((operand, s2)) ->
+          let op = getTokenString(opTok)
+          in Ok((UnaryOp({ op: op, operand: operand }), s2))
+        Err(e) -> Err(e)
+    Nothing -> parseApplication(state)
+
+-- Parse function application
+def parseApplication(state: ParserState) : Result ParseError (Expr, ParserState) =
+  match parseAccess(state) with
+    Ok((expr, s1)) ->
+      match parseApplicationLoop(s1, expr) with
+        Ok((result, s2)) -> Ok((result, s2))
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+def parseApplicationLoop(state: ParserState, expr: Expr) : Result ParseError (Expr, ParserState) =
+  let (mLParen, s1) = matchToken(state, [LPAREN])
+  in match mLParen with
+    Just(_) ->
+      if check(s1, [RPAREN]) then
+        parseApplicationLoop(advance(s1), expr)
+      else
+        match parseAppArgs(s1, []) with
+          Ok((args, s2)) ->
+            match expect(s2, RPAREN, "Expected ')'") with
+              Ok((_, s3)) ->
+                let applied = applyArgs(expr, args)
+                in parseApplicationLoop(s3, applied)
+              Err(e) -> Err(e)
+          Err(e) -> Err(e)
+    Nothing -> Ok((expr, state))
+
+-- Parse application arguments
+def parseAppArgs(state: ParserState, args: List Expr) : Result ParseError (List Expr, ParserState) =
+  match parseExpr(state) with
+    Ok((arg, s1)) ->
+      let (mComma, s2) = matchToken(s1, [COMMA])
+      in match mComma with
+        Just(_) -> parseAppArgs(s2, args ++ [arg])
+        Nothing -> Ok((args ++ [arg], s1))
+    Err(e) -> Err(e)
+
+-- Apply arguments to expression
+def applyArgs(func: Expr, args: List Expr) : Expr =
+  match args with
+    [] -> func
+    [arg] -> App({ func: func, args: [arg] })
+    [arg, ...rest] -> applyArgs(App({ func: func, args: [arg] }), rest)
+
+-- Parse field/index access
+def parseAccess(state: ParserState) : Result ParseError (Expr, ParserState) =
+  match parseAtom(state) with
+    Ok((expr, s1)) ->
+      match parseAccessLoop(s1, expr) with
+        Ok((result, s2)) -> Ok((result, s2))
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+def parseAccessLoop(state: ParserState, expr: Expr) : Result ParseError (Expr, ParserState) =
+  let (mDot, s1) = matchToken(state, [DOT])
+  in match mDot with
+    Just(_) ->
+      match expect(s1, IDENT, "Expected field name") with
+        Ok((fieldTok, s2)) ->
+          parseAccessLoop(s2, FieldAccess({ expr: expr, field: getTokenString(fieldTok) }))
+        Err(e) -> Err(e)
+    Nothing ->
+      let (mLBracket, s2) = matchToken(state, [LBRACKET])
+      in match mLBracket with
+        Just(_) ->
+          match parseExpr(s2) with
+            Ok((index, s3)) ->
+              match expect(s3, RBRACKET, "Expected ']'") with
+                Ok((_, s4)) -> parseAccessLoop(s4, IndexAccess({ expr: expr, index: index }))
+                Err(e) -> Err(e)
+            Err(e) -> Err(e)
+        Nothing -> Ok((expr, state))
