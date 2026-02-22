@@ -479,3 +479,265 @@ def parseModulePath(state: ParserState, parts: List String) : Result ParseError 
           parseModulePath(s2, parts ++ [getTokenString(partTok)])
         Err(e) -> Err(e)
     Nothing -> Ok((parts, state))
+
+-- ============ Interface Declaration Parsing ============
+
+def parseInterfaceDecl(state: ParserState) : Result ParseError (Decl, ParserState) =
+  match expect(state, IDENT, "Expected interface name") with
+    Ok((nameTok, s1)) ->
+      let name = getTokenString(nameTok)
+      in match parseTypeParams(s1) with
+        Ok((params, s2)) ->
+          match expect(s2, KW_WHERE, "Expected 'where'") with
+            Ok((_, s3)) ->
+              match expect(s3, LBRACE, "Expected '{'") with
+                Ok((_, s4)) ->
+                  match parseInterfaceMethods(s4, []) with
+                    Ok((methods, s5)) ->
+                      match expect(s5, RBRACE, "Expected '}'") with
+                        Ok((_, s6)) ->
+                          Ok((InterfaceDecl({
+                            name: name,
+                            params: params,
+                            methods: methods,
+                            superclasses: []
+                          }), s6))
+                        Err(e) -> Err(e)
+                    Err(e) -> Err(e)
+                Err(e) -> Err(e)
+            Err(e) -> Err(e)
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+-- Parse interface methods
+def parseInterfaceMethods(state: ParserState, methods: List InterfaceMethod) : Result ParseError (List InterfaceMethod, ParserState) =
+  if check(state, [RBRACE]) then
+    Ok((methods, state))
+  else
+    match expect(state, IDENT, "Expected method name") with
+      Ok((nameTok, s1)) ->
+        match expect(s1, COLON, "Expected ':'") with
+          Ok((_, s2)) ->
+            match parseTypeRef(s2) with
+              Ok((typeRef, s3)) ->
+                let (mComma, s4) = matchToken(s3, [COMMA])
+                in parseInterfaceMethods(s4, methods ++ [{ name: getTokenString(nameTok), type: typeRef }])
+              Err(e) -> Err(e)
+          Err(e) -> Err(e)
+      Err(e) -> Err(e)
+
+-- ============ Impl Declaration Parsing ============
+
+def parseImplDecl(state: ParserState) : Result ParseError (Decl, ParserState) =
+  match expect(state, IDENT, "Expected class name") with
+    Ok((classNameTok, s1)) ->
+      let className = getTokenString(classNameTok)
+      in match parseTypeRef(s1) with
+        Ok((typeRef, s2)) ->
+          match expect(s2, KW_WHERE, "Expected 'where'") with
+            Ok((_, s3)) ->
+              match expect(s3, LBRACE, "Expected '{'") with
+                Ok((_, s4)) ->
+                  match parseImplMethods(s4, []) with
+                    Ok((methods, s5)) ->
+                      match expect(s5, RBRACE, "Expected '}'") with
+                        Ok((_, s6)) ->
+                          Ok((ImplDecl({
+                            className: className,
+                            typeRef: typeRef,
+                            methods: methods
+                          }), s6))
+                        Err(e) -> Err(e)
+                    Err(e) -> Err(e)
+                Err(e) -> Err(e)
+            Err(e) -> Err(e)
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+-- Parse impl methods
+def parseImplMethods(state: ParserState, methods: List ImplMethod) : Result ParseError (List ImplMethod, ParserState) =
+  if check(state, [RBRACE]) then
+    Ok((methods, state))
+  else
+    match expect(state, IDENT, "Expected method name") with
+      Ok((nameTok, s1)) ->
+        match parseParams(s1) with
+          Ok((params, s2)) ->
+            match expect(s2, EQUALS, "Expected '='") with
+              Ok((_, s3)) ->
+                match parseExpr(s3) with
+                  Ok((body, s4)) ->
+                    let (mComma, s5) = matchToken(s4, [COMMA])
+                    in parseImplMethods(s5, methods ++ [{ name: getTokenString(nameTok), params: params, body: body }])
+                  Err(e) -> Err(e)
+              Err(e) -> Err(e)
+          Err(e) -> Err(e)
+      Err(e) -> Err(e)
+
+-- ============ Effect Declaration Parsing ============
+
+def parseEffectDecl(state: ParserState) : Result ParseError (Decl, ParserState) =
+  match expect(state, IDENT, "Expected effect name") with
+    Ok((nameTok, s1)) ->
+      let name = getTokenString(nameTok)
+      in match expect(s1, LBRACE, "Expected '{'") with
+        Ok((_, s2)) ->
+          match parseEffectOps(s2, []) with
+            Ok((ops, s3)) ->
+              match expect(s3, RBRACE, "Expected '}'") with
+                Ok((_, s4)) ->
+                  Ok((EffectDecl({
+                    name: name,
+                    operations: ops
+                  }), s4))
+                Err(e) -> Err(e)
+            Err(e) -> Err(e)
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+-- Parse effect operations
+def parseEffectOps(state: ParserState, ops: List EffectOp) : Result ParseError (List EffectOp, ParserState) =
+  if check(state, [RBRACE]) then
+    Ok((ops, state))
+  else
+    match expect(state, IDENT, "Expected operation name") with
+      Ok((nameTok, s1)) ->
+        match expect(s1, COLON, "Expected ':'") with
+          Ok((_, s2)) ->
+            match parseTypeRef(s2) with
+              Ok((typeRef, s3)) ->
+                let (mComma, s4) = matchToken(s3, [COMMA])
+                in parseEffectOps(s4, ops ++ [{ name: getTokenString(nameTok), type: typeRef }])
+              Err(e) -> Err(e)
+          Err(e) -> Err(e)
+      Err(e) -> Err(e)
+
+-- ============ Type Reference Parsing ============
+
+-- Parse type reference (entry point)
+def parseTypeRef(state: ParserState) : Result ParseError (TypeRef, ParserState) =
+  parseTypeArrow(state)
+
+-- Parse arrow type (function type)
+def parseTypeArrow(state: ParserState) : Result ParseError (TypeRef, ParserState) =
+  match parseTypeApp(state) with
+    Ok((left, s1)) ->
+      let (mArrow, s2) = matchToken(s1, [ARROW])
+      in match mArrow with
+        Just(_) ->
+          match parseTypeArrow(s2) with
+            Ok((right, s3)) -> Ok((FunTypeRef({ param: left, result: right }), s3))
+            Err(e) -> Err(e)
+        Nothing -> Ok((left, s1))
+    Err(e) -> Err(e)
+
+-- Parse type application
+def parseTypeApp(state: ParserState) : Result ParseError (TypeRef, ParserState) =
+  match parseTypeAtom(state) with
+    Ok((base, s1)) ->
+      match parseTypeArgs(s1, []) with
+        Ok((args, s2)) ->
+          if List.isEmpty(args) then
+            Ok((base, s2))
+          else
+            match base with
+              SimpleTypeRef(data) ->
+                Ok((SimpleTypeRef({ name: data.name, args: args }), s2))
+              _ -> Ok((base, s2))
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+-- Parse type arguments
+def parseTypeArgs(state: ParserState, args: List TypeRef) : Result ParseError (List TypeRef, ParserState) =
+  if check(state, [IDENT]) then
+    match parseTypeAtom(state) with
+      Ok((typeRef, s1)) -> parseTypeArgs(s1, args ++ [typeRef])
+      Err(e) -> Err(e)
+  else
+    Ok((args, state))
+
+-- Parse atomic type
+def parseTypeAtom(state: ParserState) : Result ParseError (TypeRef, ParserState) =
+  let (mLParen, s1) = matchToken(state, [LPAREN])
+  in match mLParen with
+    Just(_) ->
+      if check(s1, [RPAREN]) then
+        Ok((TupleTypeRef({ elements: [] }), advance(s1)))
+      else
+        match parseTypeRef(s1) with
+          Ok((inner, s2)) ->
+            let (mComma, s3) = matchToken(s2, [COMMA])
+            in match mComma with
+              Just(_) ->
+                match parseTupleTypes(s3, [inner]) with
+                  Ok((elements, s4)) ->
+                    match expect(s4, RPAREN, "Expected ')' after tuple type") with
+                      Ok((_, s5)) -> Ok((TupleTypeRef({ elements: elements }), s5))
+                      Err(e) -> Err(e)
+                  Err(e) -> Err(e)
+              Nothing ->
+                match expect(s2, RPAREN, "Expected ')'") with
+                  Ok((_, s3)) -> Ok((inner, s3))
+                  Err(e) -> Err(e)
+          Err(e) -> Err(e)
+    Nothing ->
+      let (mLBracket, s2) = matchToken(state, [LBRACKET])
+      in match mLBracket with
+        Just(_) ->
+          match parseTypeRef(s2) with
+            Ok((elemType, s3)) ->
+              match expect(s3, RBRACKET, "Expected ']' after list type") with
+                Ok((_, s4)) -> Ok((SimpleTypeRef({ name: "List", args: [elemType] }), s4))
+                Err(e) -> Err(e)
+            Err(e) -> Err(e)
+        Nothing ->
+          let (mLBrace, s3) = matchToken(state, [LBRACE])
+          in match mLBrace with
+            Just(_) -> parseRecordType(s3)
+            Nothing ->
+              match expect(state, IDENT, "Expected type name") with
+                Ok((nameTok, s4)) ->
+                  Ok((SimpleTypeRef({ name: getTokenString(nameTok), args: [] }), s4))
+                Err(e) -> Err(e)
+
+-- Parse tuple types
+def parseTupleTypes(state: ParserState, elements: List TypeRef) : Result ParseError (List TypeRef, ParserState) =
+  if check(state, [RPAREN]) then
+    Ok((elements, state))
+  else
+    match parseTypeRef(state) with
+      Ok((typeRef, s1)) ->
+        let (mComma, s2) = matchToken(s1, [COMMA])
+        in parseTupleTypes(s2, elements ++ [typeRef])
+      Err(e) -> Err(e)
+
+-- Parse record type
+def parseRecordType(state: ParserState) : Result ParseError (TypeRef, ParserState) =
+  if check(state, [RBRACE]) then
+    match expect(state, RBRACE, "Expected '}' after record type") with
+      Ok((_, s1)) -> Ok((RecordTypeRef({ fields: [] }), s1))
+      Err(e) -> Err(e)
+  else
+    match parseRecordFields(state, []) with
+      Ok((fields, s1)) ->
+        match expect(s1, RBRACE, "Expected '}' after record type") with
+          Ok((_, s2)) -> Ok((RecordTypeRef({ fields: fields }), s2))
+          Err(e) -> Err(e)
+      Err(e) -> Err(e)
+
+-- Parse record fields
+def parseRecordFields(state: ParserState, fields: List (String, TypeRef)) : Result ParseError (List (String, TypeRef), ParserState) =
+  match expect(state, IDENT, "Expected field name") with
+    Ok((nameTok, s1)) ->
+      match expect(s1, COLON, "Expected ':' after field name") with
+        Ok((_, s2)) ->
+          match parseTypeRef(s2) with
+            Ok((typeRef, s3)) ->
+              let (mComma, s4) = matchToken(s3, [COMMA])
+              in if check(s4, [RBRACE]) then
+                Ok((fields ++ [(getTokenString(nameTok), typeRef)], s4))
+              else
+                parseRecordFields(s4, fields ++ [(getTokenString(nameTok), typeRef)])
+            Err(e) -> Err(e)
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
