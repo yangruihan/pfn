@@ -124,3 +124,167 @@ def getTokenChar(token: Token) : Char =
   match token.value with
     CharValue(c) -> c
     _ -> '\0'
+
+-- ============ Main Parse Function ============
+
+-- Parse a module from tokens
+def parse(tokens: List Token) : Result ParseError Module =
+  parseModule(initParser(tokens))
+
+-- Parse module declarations
+def parseModule(state: ParserState) : Result ParseError Module =
+  parseDeclarations(state, [])
+
+-- Collect all declarations
+def parseDeclarations(state: ParserState, decls: List Decl) : Result ParseError Module =
+  if check(state, [EOF]) then
+    Ok({ name: Nothing, declarations: List.reverse(decls) })
+  else
+    match parseDeclaration(state) with
+      Ok((decl, newState)) -> parseDeclarations(newState, [decl] ++ decls)
+      Err(e) -> Err(e)
+
+-- ============ Declaration Parsing ============
+
+-- Parse a single declaration
+def parseDeclaration(state: ParserState) : Result ParseError (Decl, ParserState) =
+  let (mDef, s1) = matchToken(state, [KW_DEF])
+  in match mDef with
+    Just(_) -> parseDef(s1, False, Nothing)
+    Nothing ->
+      let (mType, s2) = matchToken(state, [KW_TYPE])
+      in match mType with
+        Just(_) -> parseTypeDecl(s2)
+        Nothing ->
+          let (mGadt, s3) = matchToken(state, [KW_GADT])
+          in match mGadt with
+            Just(_) -> parseGadtDecl(s3)
+            Nothing ->
+              let (mImport, s4) = matchToken(state, [KW_IMPORT])
+              in match mImport with
+                Just(_) -> parseImportDecl(s4)
+                Nothing ->
+                  let (mInterface, s5) = matchToken(state, [KW_INTERFACE])
+                  in match mInterface with
+                    Just(_) -> parseInterfaceDecl(s5)
+                    Nothing ->
+                      let (mImpl, s6) = matchToken(state, [KW_IMPL])
+                      in match mImpl with
+                        Just(_) -> parseImplDecl(s6)
+                        Nothing ->
+                          let (mEffect, s7) = matchToken(state, [KW_EFFECT])
+                          in match mEffect with
+                            Just(_) -> parseEffectDecl(s7)
+                            Nothing ->
+                              let (mAt, s8) = matchToken(state, [AT])
+                              in match mAt with
+                                Just(_) -> parseDecorator(s8)
+                                Nothing -> Err(parseError("Unexpected token: " ++ tokenTypeName(current(state).tokenType), current(state)))
+
+-- Parse @py.export decorator
+def parseDecorator(state: ParserState) : Result ParseError (Decl, ParserState) =
+  if check(state, [IDENT]) && getTokenString(current(state)) == "py" then
+    let s1 = advance(state)
+    in if check(s1, [DOT]) then
+      let s2 = advance(s1)
+      in if check(s2, [IDENT]) && getTokenString(current(s2)) == "export" then
+        let s3 = advance(s2)
+        in let (mLParen, s4) = matchToken(s3, [LPAREN])
+        in match mLParen with
+          Just(_) ->
+            match expect(s4, STRING, "Expected export name") with
+              Ok((nameTok, s5)) ->
+                match expect(s5, RPAREN, "Expected ')'") with
+                  Ok((_, s6)) ->
+                    match expect(s6, KW_DEF, "Expected 'def' after @py.export") with
+                      Ok((_, s7)) ->
+                        let exportName = getTokenString(nameTok)
+                        in parseDef(s7, True, Just(exportName))
+                      Err(e) -> Err(e)
+                  Err(e) -> Err(e)
+              Err(e) -> Err(e)
+          Nothing ->
+            match expect(s3, KW_DEF, "Expected 'def' after @py.export") with
+              Ok((_, s4)) -> parseDef(s4, True, Nothing)
+              Err(e) -> Err(e)
+      else
+        Err(parseError("Expected 'export' after '@py.'", current(s2)))
+    else
+      Err(parseError("Expected '.' after '@py'", current(s1)))
+  else
+    Err(parseError("Expected 'py' after '@'", current(state)))
+
+-- Parse function definition
+def parseDef(state: ParserState, isExported: Bool, exportName: Maybe String) : Result ParseError (Decl, ParserState) =
+  match expect(state, IDENT, "Expected function name") with
+    Ok((nameTok, s1)) ->
+      let name = getTokenString(nameTok)
+      in match parseParams(s1) with
+        Ok((params, s2)) ->
+          match parseReturnType(s2) with
+            Ok((retType, s3)) ->
+              match expect(s3, EQUALS, "Expected '=' after function signature") with
+                Ok((_, s4)) ->
+                  match parseExpr(s4) with
+                    Ok((body, s5)) ->
+                      Ok((DefDecl({
+                        name: name,
+                        params: params,
+                        body: body,
+                        returnType: retType,
+                        isExported: isExported,
+                        exportName: exportName
+                      }), s5))
+                    Err(e) -> Err(e)
+                Err(e) -> Err(e)
+            Err(e) -> Err(e)
+        Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+-- Parse function parameters
+def parseParams(state: ParserState) : Result ParseError (List Param, ParserState) =
+  let (mLParen, s1) = matchToken(state, [LPAREN])
+  in match mLParen with
+    Just(_) ->
+      if check(s1, [RPAREN]) then
+        Ok(([], advance(s1)))
+      else
+        parseParamList(s1, [])
+    Nothing -> Ok(([], state))
+
+-- Parse parameter list inside parentheses
+def parseParamList(state: ParserState, params: List Param) : Result ParseError (List Param, ParserState) =
+  match parseParam(state) with
+    Ok((param, s1)) ->
+      let (mComma, s2) = matchToken(s1, [COMMA])
+      in match mComma with
+        Just(_) -> parseParamList(s2, params ++ [param])
+        Nothing ->
+          match expect(s1, RPAREN, "Expected ')' after parameters") with
+            Ok((_, s3)) -> Ok((params ++ [param], s3))
+            Err(e) -> Err(e)
+    Err(e) -> Err(e)
+
+-- Parse single parameter
+def parseParam(state: ParserState) : Result ParseError (Param, ParserState) =
+  match expect(state, IDENT, "Expected parameter name") with
+    Ok((nameTok, s1)) ->
+      let name = getTokenString(nameTok)
+      in let (mColon, s2) = matchToken(s1, [COLON])
+      in match mColon with
+        Just(_) ->
+          match parseTypeRef(s2) with
+            Ok((typeRef, s3)) -> Ok(({ name: name, typeAnnotation: Just(typeRef) }, s3))
+            Err(e) -> Err(e)
+        Nothing -> Ok(({ name: name, typeAnnotation: Nothing }, s1))
+    Err(e) -> Err(e)
+
+-- Parse optional return type
+def parseReturnType(state: ParserState) : Result ParseError (Maybe TypeRef, ParserState) =
+  let (mArrow, s1) = matchToken(state, [ARROW])
+  in match mArrow with
+    Just(_) ->
+      match parseTypeRef(s1) with
+        Ok((typeRef, s2)) -> Ok((Just(typeRef), s2))
+        Err(e) -> Err(e)
+    Nothing -> Ok((Nothing, state))
