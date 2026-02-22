@@ -1,0 +1,294 @@
+-- Pfn Standard Library: Dict
+-- Dictionary (Map) operations
+
+module Dict
+
+-- Type definition
+-- Dict k v is a mapping from keys to values
+
+-- Basic operations
+
+def empty : Dict k v = {}
+
+def singleton k v = { k: v }
+
+def fromList xs =
+    match xs with
+        [] -> {}
+        (k, v) :: xs -> insert k v (fromList xs)
+
+def toList d =
+    let pairs = toPairs d
+    in map (p => (fst p, snd p)) pairs
+
+def keys d = map fst (toList d)
+
+def values d = map snd (toList d)
+
+-- Query
+
+def isEmpty d = size d == 0
+
+def size d = dictSize d
+
+def member k d =
+    match lookup k d with
+        Just _ -> True
+        Nothing -> False
+
+def lookup k d = dictLookup k d
+
+def get k d = lookup k d
+
+def getOrElse k default d =
+    match lookup k d with
+        Just v -> v
+        Nothing -> default
+
+-- Insertion
+
+def insert k v d = dictInsert k v d
+
+def insertWith f k v d =
+    match lookup k d with
+        Just old -> insert k (f old v) d
+        Nothing -> insert k v d
+
+def insertWithKey f k v d =
+    match lookup k d with
+        Just old -> insert k (f k old v) d
+        Nothing -> insert k v d
+
+-- Update
+
+def update f k d =
+    match lookup k d with
+        Just v ->
+            match f v with
+                Just new -> insert k new d
+                Nothing -> remove k d
+        Nothing -> d
+
+def updateWithKey f k d =
+    match lookup k d with
+        Just v ->
+            match f k v with
+                Just new -> insert k new d
+                Nothing -> remove k d
+        Nothing -> d
+
+def alter f k d =
+    match f (lookup k d) with
+        Just v -> insert k v d
+        Nothing -> remove k d
+
+-- Deletion
+
+def remove k d = dictRemove k d
+
+def delete k d = remove k d
+
+def without ks d = foldl (flip remove) d ks
+
+-- Modification
+
+def adjust f k d =
+    match lookup k d with
+        Just v -> insert k (f v) d
+        Nothing -> d
+
+def adjustWithKey f k d =
+    match lookup k d with
+        Just v -> insert k (f k v) d
+        Nothing -> d
+
+-- Union
+
+def union d1 d2 =
+    let kvs = toList d1
+    in foldl (acc (k, v) => insert k v acc) d2 kvs
+
+def unionWith f d1 d2 =
+    let merge k v1 v2 =
+            match (v1, v2) with
+                (Just a, Just b) -> Just (f a b)
+                (Just a, Nothing) -> Just a
+                (Nothing, Just b) -> Just b
+                (Nothing, Nothing) -> Nothing
+    in mergeWith merge d1 d2
+
+def unionWithKey f d1 d2 =
+    let merge k v1 v2 =
+            match (v1, v2) with
+                (Just a, Just b) -> Just (f k a b)
+                (Just a, Nothing) -> Just a
+                (Nothing, Just b) -> Just b
+                (Nothing, Nothing) -> Nothing
+    in mergeWith merge d1 d2
+
+def unions ds = foldl union empty ds
+
+def unionsWith f ds =
+    match ds with
+        [] -> empty
+        d :: ds -> foldl (unionWith f) d ds
+
+-- Intersection
+
+def intersect d1 d2 =
+    let kvs = toList d1
+        go acc (k, v) =
+            if member k d2
+                then insert k v acc
+                else acc
+    in foldl go empty kvs
+
+def intersectWith f d1 d2 =
+    let kvs = toList d1
+        go acc (k, v1) =
+            match lookup k d2 with
+                Just v2 -> insert k (f v1 v2) acc
+                Nothing -> acc
+    in foldl go empty kvs
+
+def intersectWithKey f d1 d2 =
+    let kvs = toList d1
+        go acc (k, v1) =
+            match lookup k d2 with
+                Just v2 -> insert k (f k v1 v2) acc
+                Nothing -> acc
+    in foldl go empty kvs
+
+-- Difference
+
+def diff d1 d2 =
+    let kvs = toList d1
+        go acc (k, v) =
+            if member k d2
+                then acc
+                else insert k v acc
+    in foldl go empty kvs
+
+def difference d1 d2 = diff d1 d2
+
+-- Mapping
+
+def map f d =
+    let kvs = toList d
+    in fromList (map ((k, v) => (k, f v)) kvs)
+
+def mapWithKey f d =
+    let kvs = toList d
+    in fromList (map ((k, v) => (k, f k v)) kvs)
+
+def mapKeys f d =
+    let kvs = toList d
+    in fromList (map ((k, v) => (f k, v)) kvs)
+
+-- Filtering
+
+def filter p d =
+    let kvs = toList d
+    in fromList (filter ((k, v) => p v) kvs)
+
+def filterWithKey p d =
+    let kvs = toList d
+    in fromList (filter ((k, v) => p k v) kvs)
+
+def partition p d =
+    let kvs = toList d
+        (yes, no) = partition ((k, v) => p v) kvs
+    in (fromList yes, fromList no)
+
+def partitionWithKey p d =
+    let kvs = toList d
+        (yes, no) = partition ((k, v) => p k v) kvs
+    in (fromList yes, fromList no)
+
+-- Folding
+
+def foldl f z d =
+    let kvs = toList d
+    in foldl (acc (k, v) => f acc v) z kvs
+
+def foldlWithKey f z d =
+    let kvs = toList d
+    in foldl (acc (k, v) => f acc k v) z kvs
+
+def foldr f z d =
+    let kvs = toList d
+    in foldr ((k, v) acc => f v acc) z kvs
+
+def foldrWithKey f z d =
+    let kvs = toList d
+    in foldr ((k, v) acc => f k v acc) z kvs
+
+-- Conversion
+
+def toPairs d = dictToPairs d
+
+def fromPairs ps = fromList ps
+
+-- Lists
+
+def toAscList d = sortOn fst (toList d)
+
+def toDescList d = reverse (toAscList d)
+
+def fromAscList xs =
+    let go acc lst =
+        match lst with
+            [] -> acc
+            (k, v) :: xs -> go (insert k v acc) xs
+    in go empty xs
+
+-- Min/Max
+
+def findMin d =
+    match toAscList d with
+        [] -> Nothing
+        (k, v) :: _ -> Just (k, v)
+
+def findMax d =
+    match toDescList d with
+        [] -> Nothing
+        (k, v) :: _ -> Just (k, v)
+
+def deleteMin d =
+    match findMin d with
+        Just (k, _) -> remove k d
+        Nothing -> d
+
+def deleteMax d =
+    match findMax d with
+        Just (k, _) -> remove k d
+        Nothing -> d
+
+def updateMin f d =
+    match findMin d with
+        Just (k, v) ->
+            match f v with
+                Just new -> insert k new d
+                Nothing -> remove k d
+        Nothing -> d
+
+def updateMax f d =
+    match findMax d with
+        Just (k, v) ->
+            match f v with
+                Just new -> insert k new d
+                Nothing -> remove k d
+        Nothing -> d
+
+-- Merge
+
+def mergeWith f d1 d2 =
+    let allKeys = nub (keys d1 ++ keys d2)
+        go acc k =
+            let v1 = lookup k d1
+                v2 = lookup k d2
+                result = f k v1 v2
+            in match result with
+                Just v -> insert k v acc
+                Nothing -> acc
+    in foldl go empty allKeys

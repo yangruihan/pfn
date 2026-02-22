@@ -1,0 +1,218 @@
+-- Pfn Standard Library: IO
+-- Input/Output operations
+
+module IO
+
+-- IO type represents effectful computations
+-- IO a is a computation that produces a value of type a
+
+-- Basic operations
+
+def pure x : IO a = pure x
+
+def map f io : IO a -> IO b = mapIO f io
+
+def andThen f io : IO a -> IO b = bindIO f io
+
+def then io1 io2 : IO a -> IO b -> IO b =
+    bindIO (x => io2) io1
+
+-- Console I/O
+
+def print x : IO () = printIO x
+
+def putStrLn s : IO () = printIO s
+
+def putStr s : IO () = putStrIO s
+
+def getLine : IO String = getLineIO
+
+def getContents : IO String = getContentsIO
+
+def interact f : IO () = interactIO f
+
+-- File I/O
+
+def readFile path : IO String = readFileIO path
+
+def writeFile path content : IO () = writeFileIO path content
+
+def appendFile path content : IO () = appendFileIO path content
+
+def readFileBinary path : IO (List Int) = readFileBinaryIO path
+
+def writeFileBinary path content : IO () = writeFileBinaryIO path content
+
+-- File system
+
+def doesFileExist path : IO Bool = doesFileExistIO path
+
+def doesDirectoryExist path : IO Bool = doesDirectoryExistIO path
+
+def createDirectory path : IO () = createDirectoryIO path
+
+def removeFile path : IO () = removeFileIO path
+
+def removeDirectory path : IO () = removeDirectoryIO path
+
+def listDirectory path : IO (List String) = listDirectoryIO path
+
+def getCurrentDirectory : IO String = getCurrentDirectoryIO
+
+def setCurrentDirectory path : IO () = setCurrentDirectoryIO path
+
+-- Environment
+
+def getEnv name : IO String = getEnvIO name
+
+def getEnvOrElse name default : IO String =
+    andThen (maybe (pure default) pure) (tryGetEnv name)
+
+def tryGetEnv name : IO (Maybe String) = tryGetEnvIO name
+
+def setEnv name value : IO () = setEnvIO name value
+
+def unsetEnv name : IO () = unsetEnvIO name
+
+def getArgs : IO (List String) = getArgsIO
+
+def getProgName : IO String = getProgNameIO
+
+-- Sequencing
+
+def sequence ios : IO (List a) =
+    match ios with
+        [] -> pure []
+        io :: ios ->
+            andThen (x => andThen (xs => pure (x :: xs)) (sequence ios)) io
+
+def sequence_ ios : IO () =
+    match ios with
+        [] -> pure ()
+        io :: ios -> then io (sequence_ ios)
+
+def mapM f xs : IO (List b) =
+    sequence (map f xs)
+
+def mapM_ f xs : IO () =
+    sequence_ (map f xs)
+
+def forM xs f : IO (List b) =
+    mapM f xs
+
+def forM_ xs f : IO () =
+    mapM_ f xs
+
+-- Filtering
+
+def filterM p xs : IO (List a) =
+    match xs with
+        [] -> pure []
+        x :: xs ->
+            andThen (b =>
+                if b
+                    then andThen (ys => pure (x :: ys)) (filterM p xs)
+                    else filterM p xs
+            ) (p x)
+
+-- Folding
+
+def foldM f z xs : IO a =
+    match xs with
+        [] -> pure z
+        x :: xs -> andThen (z => foldM f z xs) (f z x)
+
+def foldM_ f z xs : IO () =
+    then (foldM f z xs) (pure ())
+
+-- Error handling
+
+def try io : IO (Result e a) = tryIO io
+
+def catch io handler : IO a = catchIO io handler
+
+def throw e : IO a = throwIO e
+
+def finally io cleanup : IO a =
+    andThen (result =>
+        then cleanup (match result with
+            Ok x => pure x
+            Error e => throw e
+        )
+    ) (try io)
+
+def bracket acquire release action : IO a =
+    andThen (resource =>
+        finally (action resource) (release resource)
+    ) acquire
+
+def bracket_ acquire release action : IO a =
+    bracket acquire (x => release) action
+
+-- Timing
+
+def delay ms : IO () = delayIO ms
+
+def getTime : IO Float = getTimeIO
+
+def measureTime io : IO (Float, a) =
+    andThen (start =>
+        andThen (result =>
+            andThen (end =>
+                pure (end - start, result)
+            ) getTime
+        ) io
+    ) getTime
+
+-- Random
+
+def random : IO Float = randomIO
+
+def randomInt min max : IO Int = randomIntIO min max
+
+def randomFloat min max : IO Float = randomFloatIO min max
+
+def randomChoice xs : IO (Maybe a) =
+    if null xs
+        then pure Nothing
+        else andThen (i => pure (at i xs)) (randomInt 0 (length xs - 1))
+
+-- Concurrency (basic)
+
+def forkIO io : IO ThreadId = forkIOIO io
+
+def killThread tid : IO () = killThreadIO tid
+
+def threadWait tid : IO () = threadWaitIO tid
+
+def threadDelay ms : IO () = delayIO ms
+
+-- Utility
+
+def when b io : IO () =
+    if b then io else pure ()
+
+def unless b io : IO () =
+    if b then pure () else io
+
+def whileM p io : IO () =
+    andThen (b => if b then whileM p io else pure ()) p
+
+def replicateM n io : IO (List a) =
+    if n <= 0
+        then pure []
+        else andThen (x => andThen (xs => pure (x :: xs)) (replicateM (n - 1) io)) io
+
+def replicateM_ n io : IO () =
+    if n <= 0
+        then pure ()
+        else then io (replicateM_ (n - 1) io)
+
+-- Debug
+
+def trace msg x : a =
+    let _ = putStrLn msg
+    in x
+
+def traceIO msg io : IO a =
+    then (putStrLn msg) io

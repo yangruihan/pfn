@@ -1,0 +1,345 @@
+-- Pfn Standard Library: List
+-- Comprehensive list operations
+
+module List
+
+-- Basic operations
+
+def head xs =
+    match xs with
+        x :: _ -> Just x
+        [] -> Nothing
+
+def tail xs =
+    match xs with
+        _ :: xs -> Just xs
+        [] -> Nothing
+
+def init xs =
+    match xs with
+        [] -> Nothing
+        _ -> Just (take (length xs - 1) xs)
+
+def last xs =
+    match xs with
+        [] -> Nothing
+        x :: [] -> Just x
+        _ :: xs -> last xs
+
+def null xs =
+    match xs with
+        [] -> True
+        _ -> False
+
+def length xs =
+    let go acc lst =
+        match lst with
+            [] -> acc
+            _ :: xs -> go (acc + 1) xs
+    in go 0 xs
+
+-- Indexing
+
+def at n xs =
+    match (n, xs) with
+        (0, x :: _) -> Just x
+        (n, _ :: xs) -> at (n - 1) xs
+        _ -> Nothing
+
+def unsafeAt n xs =
+    match at n xs with
+        Just x -> x
+        Nothing -> error "List.at: index out of bounds"
+
+-- Construction
+
+def singleton x = [x]
+
+def range start end =
+    if start > end
+        then []
+        else start :: range (start + 1) end
+
+def replicate n x =
+    if n <= 0
+        then []
+        else x :: replicate (n - 1) x
+
+-- Transformations
+
+def map f xs =
+    match xs with
+        [] -> []
+        x :: xs -> f x :: map f xs
+
+def reverse xs =
+    let go acc lst =
+        match lst with
+            [] -> acc
+            x :: xs -> go (x :: acc) xs
+    in go [] xs
+
+def intersperse sep xs =
+    match xs with
+        [] -> []
+        x :: [] -> [x]
+        x :: xs -> x :: sep :: intersperse sep xs
+
+def intercalate sep xss =
+    concat (intersperse sep xss)
+
+-- Folding
+
+def foldr f z xs =
+    match xs with
+        [] -> z
+        x :: xs -> f x (foldr f z xs)
+
+def foldl f z xs =
+    match xs with
+        [] -> z
+        x :: xs -> foldl f (f z x) xs
+
+def foldr1 f xs =
+    match xs with
+        [] -> error "List.foldr1: empty list"
+        x :: [] -> x
+        x :: xs -> f x (foldr1 f xs)
+
+def foldl1 f xs =
+    match xs with
+        [] -> error "List.foldl1: empty list"
+        x :: xs -> foldl f x xs
+
+-- Special folds
+
+def concat xss = foldr (++) [] xss
+
+def concatMap f xs = concat (map f xs)
+
+def and xs = foldr (&&) True xs
+
+def or xs = foldr (||) False xs
+
+def any p xs = foldr (||) False (map p xs)
+
+def all p xs = foldr (&&) True (map p xs)
+
+def sum xs = foldl (+) 0 xs
+
+def product xs = foldl (*) 1 xs
+
+def maximum xs =
+    match xs with
+        [] -> error "List.maximum: empty list"
+        x :: xs -> foldl max x xs
+
+def minimum xs =
+    match xs with
+        [] -> error "List.minimum: empty list"
+        x :: xs -> foldl min x xs
+
+-- Building lists
+
+def scanl f z xs =
+    match xs with
+        [] -> [z]
+        x :: xs -> z :: scanl f (f z x) xs
+
+def scanr f z xs =
+    match xs with
+        [] -> [z]
+        x :: xs ->
+            let ys = scanr f z xs
+            in f x (head ys) :: ys
+
+-- Sublists
+
+def take n xs =
+    match (n, xs) with
+        (0, _) -> []
+        (_, []) -> []
+        (n, x :: xs) -> x :: take (n - 1) xs
+
+def drop n xs =
+    match (n, xs) with
+        (0, xs) -> xs
+        (_, []) -> []
+        (n, _ :: xs) -> drop (n - 1) xs
+
+def splitAt n xs = (take n xs, drop n xs)
+
+def takeWhile p xs =
+    match xs with
+        [] -> []
+        x :: xs -> if p x then x :: takeWhile p xs else []
+
+def dropWhile p xs =
+    match xs with
+        [] -> []
+        x :: xs -> if p x then dropWhile p xs else xs
+
+def span p xs =
+    match xs with
+        [] -> ([], [])
+        x :: xs ->
+            if p x
+                then let (ys, zs) = span p xs in (x :: ys, zs)
+                else ([], xs)
+
+def break p xs = span (not << p) xs
+
+-- Searching
+
+def elem x xs = any (== x) xs
+
+def notElem x xs = not (elem x xs)
+
+def find p xs =
+    match xs with
+        [] -> Nothing
+        x :: xs -> if p x then Just x else find p xs
+
+def findIndex p xs =
+    let go n lst =
+        match lst with
+            [] -> Nothing
+            x :: xs -> if p x then Just n else go (n + 1) xs
+    in go 0 xs
+
+def elemIndex x xs = findIndex (== x) xs
+
+def elemIndices x xs = findIndices (== x) xs
+
+def findIndices p xs =
+    let go n lst =
+        match lst with
+            [] -> []
+            x :: xs ->
+                if p x
+                    then n :: go (n + 1) xs
+                    else go (n + 1) xs
+    in go 0 xs
+
+-- Filtering
+
+def filter p xs =
+    match xs with
+        [] -> []
+        x :: xs -> if p x then x :: filter p xs else filter p xs
+
+def partition p xs =
+    match xs with
+        [] -> ([], [])
+        x :: xs ->
+            let (ys, zs) = partition p xs
+            in if p x then (x :: ys, zs) else (ys, x :: zs)
+
+-- Zipping
+
+def zip xs ys =
+    match (xs, ys) with
+        ([], _) -> []
+        (_, []) -> []
+        (x :: xs, y :: ys) -> (x, y) :: zip xs ys
+
+def zipWith f xs ys =
+    match (xs, ys) with
+        ([], _) -> []
+        (_, []) -> []
+        (x :: xs, y :: ys) -> f x y :: zipWith f xs ys
+
+def unzip xs =
+    match xs with
+        [] -> ([], [])
+        (x, y) :: xs ->
+            let (xs, ys) = unzip xs
+            in (x :: xs, y :: ys)
+
+def unzipWith f xs =
+    match xs with
+        [] -> ([], [])
+        x :: xs ->
+            let (a, b) = f x
+                (as, bs) = unzipWith f xs
+            in (a :: as, b :: bs)
+
+-- Sorting
+
+def sortBy cmp xs =
+    match xs with
+        [] -> []
+        x :: xs ->
+            let (lt, gt) = partition (cmp x >> (< 0)) xs
+            in sortBy cmp lt ++ [x] ++ sortBy cmp gt xs
+
+def sort xs = sortBy compare xs
+
+def sortOn f xs = sortBy (compare << f) xs
+
+-- Set operations
+
+def nub xs =
+    match xs with
+        [] -> []
+        x :: xs -> x :: nub (filter (not << (== x)) xs)
+
+def nubBy eq xs =
+    match xs with
+        [] -> []
+        x :: xs -> x :: nubBy eq (filter (not << eq x) xs)
+
+def delete x xs =
+    match xs with
+        [] -> []
+        y :: xs -> if x == y then xs else y :: delete x xs
+
+def deleteBy eq x xs =
+    match xs with
+        [] -> []
+        y :: xs -> if eq x y then xs else y :: deleteBy eq x xs
+
+def deleteFirsts xs ys = foldl (flip delete) xs ys
+
+def union xs ys = xs ++ foldl (flip delete) (nub ys) xs
+
+def intersect xs ys = filter (flip elem ys) xs
+
+-- List transformations
+
+def transpose xss =
+    match xss with
+        [] -> []
+        [] :: xss -> transpose xss
+        (x :: xs) :: xss ->
+            let heads = map head xss
+                tails = map tail xss
+            in (x :: heads) :: transpose (xs :: tails)
+
+-- Grouping
+
+def group xs = groupBy (==) xs
+
+def groupBy eq xs =
+    match xs with
+        [] -> []
+        x :: xs ->
+            let (ys, zs) = span (eq x) xs
+            in (x :: ys) :: groupBy eq zs
+
+-- Subsequences
+
+def subsequences xs =
+    match xs with
+        [] -> [[]]
+        x :: xs -> subsequences xs ++ map (x ::) (subsequences xs)
+
+def permutations xs =
+    match xs with
+        [] -> [[]]
+        x :: xs -> concatMap (interleave x) (permutations xs)
+
+def interleave x xs =
+    match xs with
+        [] -> [[x]]
+        y :: ys -> (x :: y :: ys) :: map (y ::) (interleave x ys)

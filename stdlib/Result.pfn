@@ -1,0 +1,236 @@
+-- Pfn Standard Library: Result
+-- Utilities for working with result types
+
+module Result
+
+-- Type definition (re-exported from Prelude)
+-- type Result e a
+--     | Ok a
+--     | Error e
+
+-- Basic operations
+
+def isOk r =
+    match r with
+        Ok _ -> True
+        _ -> False
+
+def isError r =
+    match r with
+        Error _ -> True
+        _ -> False
+
+def fromOk r =
+    match r with
+        Ok x -> x
+        Error _ -> error "Result.fromOk: Error"
+
+def fromError r =
+    match r with
+        Error e -> e
+        Ok _ -> error "Result.fromError: Ok"
+
+def withDefault default r =
+    match r with
+        Ok x -> x
+        Error _ -> default
+
+def result onError onSuccess r =
+    match r with
+        Error e -> onError e
+        Ok x -> onSuccess x
+
+-- Transformations
+
+def map f r =
+    match r with
+        Ok x -> Ok (f x)
+        Error e -> Error e
+
+def map2 f ra rb =
+    match (ra, rb) with
+        (Ok a, Ok b) -> Ok (f a b)
+        (Error e, _) -> Error e
+        (_, Error e) -> Error e
+
+def map3 f ra rb rc =
+    match (ra, rb, rc) with
+        (Ok a, Ok b, Ok c) -> Ok (f a b c)
+        (Error e, _, _) -> Error e
+        (_, Error e, _) -> Error e
+        (_, _, Error e) -> Error e
+
+def mapError f r =
+    match r with
+        Ok x -> Ok x
+        Error e -> Error (f e)
+
+def mapBoth onError onSuccess r =
+    match r with
+        Ok x -> Ok (onSuccess x)
+        Error e -> Error (onError e)
+
+-- Chaining
+
+def andThen f r =
+    match r with
+        Ok x -> f x
+        Error e -> Error e
+
+def andThenError f r =
+    match r with
+        Ok x -> Ok x
+        Error e -> f e
+
+def flatten rr =
+    match rr with
+        Ok r -> r
+        Error e -> Error e
+
+-- Combining
+
+def orElse ra rb =
+    match ra with
+        Ok _ -> ra
+        Error _ -> rb
+
+def firstOk xs =
+    match xs with
+        [] -> Error "No valid results"
+        x :: xs ->
+            match x with
+                Ok _ -> x
+                Error _ -> firstOk xs
+
+-- Conversions
+
+def toMaybe r =
+    match r with
+        Ok x -> Just x
+        Error _ -> Nothing
+
+def fromMaybe err m =
+    match m with
+        Just x -> Ok x
+        Nothing -> Error err
+
+def toList r =
+    match r with
+        Ok x -> [x]
+        Error _ -> []
+
+def fromList err xs =
+    match xs with
+        [] -> Error err
+        x :: _ -> Ok x
+
+-- Traversals
+
+def traverse f r =
+    match r with
+        Ok x -> map Ok (f x)
+        Error e -> pure (Error e)
+
+def sequence r =
+    match r with
+        Ok x -> map Ok x
+        Error e -> pure (Error e)
+
+-- List operations
+
+def catResults xs =
+    let go acc lst =
+        match lst with
+            [] -> Ok (reverse acc)
+            x :: xs ->
+                match x with
+                    Ok y -> go (y :: acc) xs
+                    Error e -> Error e
+    in go [] xs
+
+def partitionResults xs =
+    let go oks errs lst =
+        match lst with
+            [] -> (reverse oks, reverse errs)
+            x :: xs ->
+                match x with
+                    Ok y -> go (y :: oks) errs xs
+                    Error e -> go oks (e :: errs) xs
+    in go [] [] xs
+
+def mapResult f xs =
+    match xs with
+        [] -> Ok []
+        x :: xs ->
+            match f x with
+                Ok y ->
+                    match mapResult f xs with
+                        Ok ys -> Ok (y :: ys)
+                        Error e -> Error e
+                Error e -> Error e
+
+-- Comparison
+
+def equalBy eqOk eqErr ra rb =
+    match (ra, rb) with
+        (Ok a, Ok b) -> eqOk a b
+        (Error e1, Error e2) -> eqErr e1 e2
+        _ -> False
+
+def compareBy cmpOk cmpErr ra rb =
+    match (ra, rb) with
+        (Ok a, Ok b) -> cmpOk a b
+        (Error _, Ok _) -> LT
+        (Ok _, Error _) -> GT
+        (Error e1, Error e2) -> cmpErr e1 e2
+
+-- Utilities
+
+def unwrap defaultOk defaultErr r =
+    match r with
+        Ok x -> defaultOk x
+        Error e -> defaultErr e
+
+def tap onSuccess onError r =
+    match r with
+        Ok x ->
+            let _ = onSuccess x
+            in Ok x
+        Error e ->
+            let _ = onError e
+            in Error e
+
+def caseOf r errorCase okCase =
+    match r with
+        Error e -> errorCase e
+        Ok x -> okCase x
+
+-- Error accumulation
+
+def accumulate f xs =
+    let go errors values lst =
+        match lst with
+            [] ->
+                match errors with
+                    [] -> Ok (reverse values)
+                    _ -> Error (reverse errors)
+            x :: xs ->
+                match f x with
+                    Ok y -> go errors (y :: values) xs
+                    Error e -> go (e :: errors) values xs
+    in go [] [] xs
+
+-- Combining with validation
+
+def validate pred err x =
+    if pred x then Ok x else Error err
+
+def validateAll validators x =
+    let go vals =
+        match vals with
+            [] -> Ok x
+            (pred, err) :: xs ->
+                if pred x
+                    then go xs
+                    else Error err
+    in go validators

@@ -1,0 +1,331 @@
+-- Pfn Standard Library: String
+-- String manipulation utilities
+
+module String
+
+-- Basic operations
+
+def length s = stringLength s
+
+def isEmpty s = length s == 0
+
+def nonEmpty s = length s > 0
+
+-- Construction
+
+def singleton c = fromChar c
+
+def fromChar c = toString c
+
+def fromChars cs = concat (map fromChar cs)
+
+def repeat n s =
+    if n <= 0
+        then ""
+        else s ++ repeat (n - 1) s
+
+def spaces n = repeat n " "
+
+-- Access
+
+def at n s =
+    if n < 0 || n >= length s
+        then Nothing
+        else Just (unsafeAt n s)
+
+def unsafeAt n s = stringAt n s
+
+def first s =
+    if isEmpty s
+        then Nothing
+        else Just (unsafeAt 0 s)
+
+def last s =
+    if isEmpty s
+        then Nothing
+        else Just (unsafeAt (length s - 1) s)
+
+-- Slicing
+
+def slice start end s =
+    let len = length s
+        start' = if start < 0 then len + start else start
+        end' = if end < 0 then len + end else end
+    in if start' < 0 || end' > len || start' >= end'
+        then ""
+        else unsafeSlice start' end' s
+
+def unsafeSlice start end s = stringSlice start end s
+
+def take n s = slice 0 n s
+
+def drop n s = slice n (length s) s
+
+def takeRight n s = slice (length s - n) (length s) s
+
+def dropRight n s = slice 0 (length s - n) s
+
+def splitAt n s = (take n s, drop n s)
+
+-- Transformations
+
+def map f s =
+    let go acc i =
+        if i >= length s
+            then reverse acc
+            else go (f (unsafeAt i s) :: acc) (i + 1)
+    in fromChars (go [] 0)
+
+def reverse s =
+    let go acc i =
+        if i < 0
+            then acc
+            else go (acc ++ fromChar (unsafeAt i s)) (i - 1)
+    in go "" (length s - 1)
+
+def filter p s =
+    let go acc i =
+        if i >= length s
+            then reverse acc
+            else
+                let c = unsafeAt i s
+                in if p c
+                    then go (c :: acc) (i + 1)
+                    else go acc (i + 1)
+    in fromChars (go [] 0)
+
+def replace old new s =
+    let len = length old
+        go acc i =
+            if i > length s - len
+                then acc ++ drop i s
+                else
+                    if slice i (i + len) s == old
+                        then go (acc ++ new) (i + len)
+                        else go (acc ++ fromChar (unsafeAt i s)) (i + 1)
+    in go "" 0
+
+-- Splitting and joining
+
+def split sep s =
+    let len = length sep
+        go acc i =
+            if i > length s - len
+                then reverse (drop i s :: acc)
+                else
+                    if slice i (i + len) s == sep
+                        then go (slice (length acc) i s :: acc) (i + len)
+                        else go acc (i + 1)
+    in if len == 0
+        then map fromChar (toList s)
+        else go [] 0
+
+def splitOn c s = split (fromChar c) s
+
+def join sep xs =
+    match xs with
+        [] -> ""
+        x :: [] -> x
+        x :: xs -> x ++ sep ++ join sep xs
+
+def joinWith c xs = join (fromChar c) xs
+
+def lines s = split "\n" s
+
+def unlines xs = join "\n" xs
+
+def words s = filter nonEmpty (split " " s)
+
+def unwords xs = join " " xs
+
+-- Trimming
+
+def trimLeft s =
+    let go i =
+        if i >= length s
+            then ""
+            else if isSpace (unsafeAt i s)
+                then go (i + 1)
+                else drop i s
+    in go 0
+
+def trimRight s =
+    let go i =
+        if i < 0
+            then ""
+            else if isSpace (unsafeAt i s)
+                then go (i - 1)
+                else take (i + 1) s
+    in go (length s - 1)
+
+def trim s = trimLeft (trimRight s)
+
+-- Predicates
+
+def isSpace c = c == ' ' || c == '\t' || c == '\n' || c == '\r'
+
+def isDigit c = c >= '0' && c <= '9'
+
+def isAlpha c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+
+def isAlphaNum c = isAlpha c || isDigit c
+
+def isUpper c = c >= 'A' && c <= 'Z'
+
+def isLower c = c >= 'a' && c <= 'z'
+
+def startsWith prefix s =
+    length prefix <= length s && take (length prefix) s == prefix
+
+def endsWith suffix s =
+    length suffix <= length s && drop (length s - length suffix) s == suffix
+
+def contains substr s =
+    let len = length substr
+        go i =
+            i > length s - len ||
+            (slice i (i + len) s == substr || go (i + 1))
+    in if len == 0
+        then True
+        else go 0
+
+def all p s =
+    let go i =
+        i >= length s || (p (unsafeAt i s) && go (i + 1))
+    in go 0
+
+def any p s =
+    let go i =
+        i < length s && (p (unsafeAt i s) || go (i + 1))
+    in go 0
+
+-- Case conversion
+
+def toUpper s = map charToUpper s
+
+def toLower s = map charToLower s
+
+def charToUpper c =
+    if isLower c
+        then chr (ord c - 32)
+        else c
+
+def charToLower c =
+    if isUpper c
+        then chr (ord c + 32)
+        else c
+
+-- Conversions
+
+def toList s =
+    let go acc i =
+        if i < 0
+            then acc
+            else go (unsafeAt i s :: acc) (i - 1)
+    in go [] (length s - 1)
+
+def fromList cs = join "" (map fromChar cs)
+
+def toInt s =
+    let go acc i =
+        if i >= length s
+            then Just acc
+            else
+                let c = unsafeAt i s
+                in if isDigit c
+                    then go (acc * 10 + (ord c - ord '0')) (i + 1)
+                    else Nothing
+    in if isEmpty s
+        then Nothing
+        else if startsWith "-" s
+            then map negate (go 0 1)
+            else go 0 0
+
+def fromInt n = toString n
+
+def toFloat s =
+    let parts = split "." s
+    in match parts with
+        [intPart] -> map toFloat (toInt intPart)
+        [intPart, fracPart] ->
+            match (toInt intPart, toInt fracPart) with
+                (Just i, Just f) ->
+                    let sign = if startsWith "-" intPart then -1 else 1
+                        frac = toFloat f / pow 10.0 (toFloat (length fracPart))
+                    in Just (sign * (toFloat (abs i) + frac))
+                _ -> Nothing
+        _ -> Nothing
+
+def fromFloat f = toString f
+
+-- Padding
+
+def padLeft n c s =
+    let diff = n - length s
+    in if diff <= 0 then s else repeat diff (fromChar c) ++ s
+
+def padRight n c s =
+    let diff = n - length s
+    in if diff <= 0 then s else s ++ repeat diff (fromChar c)
+
+def center n c s =
+    let diff = n - length s
+        left = diff / 2
+        right = diff - left
+    in if diff <= 0
+        then s
+        else repeat left (fromChar c) ++ s ++ repeat right (fromChar c)
+
+-- Finding
+
+def indexOf substr s =
+    let len = length substr
+        go i =
+            if i > length s - len
+                then Nothing
+                else if slice i (i + len) s == substr
+                    then Just i
+                    else go (i + 1)
+    in if len == 0
+        then Just 0
+        else go 0
+
+def lastIndexOf substr s =
+    let len = length substr
+        go i =
+            if i < 0
+                then Nothing
+                else if slice i (i + len) s == substr
+                    then Just i
+                    else go (i - 1)
+    in if len == 0
+        then Just (length s)
+        else go (length s - len)
+
+def indicesOf substr s =
+    let len = length substr
+        go acc i =
+            if i > length s - len
+                then reverse acc
+                else if slice i (i + len) s == substr
+                    then go (i :: acc) (i + len)
+                    else go acc (i + 1)
+    in if len == 0
+        then range 0 (length s)
+        else go [] 0
+
+-- Folds
+
+def foldl f z s =
+    let go acc i =
+        if i >= length s
+            then acc
+            else go (f acc (unsafeAt i s)) (i + 1)
+    in go z 0
+
+def foldr f z s =
+    let go acc i =
+        if i < 0
+            then acc
+            else go (f (unsafeAt i s) acc) (i - 1)
+    in go z (length s - 1)

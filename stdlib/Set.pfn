@@ -1,0 +1,163 @@
+-- Pfn Standard Library: Set
+-- Set operations
+
+module Set
+
+-- Type definition
+-- Set a is a collection of unique elements
+
+-- Basic operations
+
+def empty : Set a = setEmpty
+
+def singleton x = setSingleton x
+
+def fromList xs = foldl (flip insert) empty xs
+
+def toList s = setToList s
+
+def fromListN n xs = fromList xs
+
+-- Query
+
+def isEmpty s = size s == 0
+
+def size s = setSize s
+
+def member x s = setMember x s
+
+def notMember x s = not (member x s)
+
+def lookup x s =
+    if member x s
+        then Just x
+        else Nothing
+
+def isSubsetOf s1 s2 =
+    all (flip member s2) (toList s1)
+
+def isProperSubsetOf s1 s2 =
+    isSubsetOf s1 s2 && size s1 < size s2
+
+def disjoint s1 s2 =
+    not (any (flip member s2) (toList s1))
+
+-- Construction
+
+def insert x s = setInsert x s
+
+def delete x s = setDelete x s
+
+def alter f x s =
+    match f (member x s) with
+        True -> insert x s
+        False -> delete x s
+
+-- Combine
+
+def union s1 s2 =
+    let xs = toList s1
+    in foldl (flip insert) s2 xs
+
+def unions ss = foldl union empty ss
+
+def difference s1 s2 =
+    let xs = toList s1
+    in foldl (flip delete) s1 (filter (flip member s2) xs)
+
+def intersection s1 s2 =
+    let xs = toList s1
+    in fromList (filter (flip member s2) xs)
+
+-- Filtering
+
+def filter p s =
+    let xs = toList s
+    in fromList (filter p xs)
+
+def partition p s =
+    let xs = toList s
+        (yes, no) = partition p xs
+    in (fromList yes, fromList no)
+
+def split x s =
+    let xs = toList s
+        lt = filter (y => y < x) xs
+        gt = filter (y => y > x) xs
+    in (fromList lt, fromList gt)
+
+-- Mapping
+
+def map f s =
+    let xs = toList s
+    in fromList (map f xs)
+
+def mapMonotonic f s = map f s
+
+-- Folding
+
+def foldl f z s =
+    let xs = toList s
+    in foldl f z xs
+
+def foldr f z s =
+    let xs = toList s
+    in foldr f z xs
+
+-- Min/Max
+
+def findMin s =
+    match toList s with
+        [] -> Nothing
+        x :: _ -> Just x
+
+def findMax s =
+    match reverse (toList s) with
+        [] -> Nothing
+        x :: _ -> Just x
+
+def deleteMin s =
+    match findMin s with
+        Just x -> delete x s
+        Nothing -> s
+
+def deleteMax s =
+    match findMax s with
+        Just x -> delete x s
+        Nothing -> s
+
+def deleteFindMin s =
+    match findMin s with
+        Just x -> Just (x, delete x s)
+        Nothing -> Nothing
+
+def deleteFindMax s =
+    match findMax s with
+        Just x -> Just (x, delete x s)
+        Nothing -> Nothing
+
+def minView s =
+    match findMin s with
+        Just x -> Just (x, delete x s)
+        Nothing -> Nothing
+
+def maxView s =
+    match findMax s with
+        Just x -> Just (x, delete x s)
+        Nothing -> Nothing
+
+-- Conversion
+
+def toAscList s = sort (toList s)
+
+def toDescList s = reverse (toAscList s)
+
+def fromAscList xs = fromList xs
+
+def fromDistinctAscList xs = fromList xs
+
+-- Debug
+
+def show s =
+    let xs = toList s
+    in "{" ++ join ", " (map show xs) ++ "}"

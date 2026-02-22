@@ -1,0 +1,189 @@
+-- CLI Tool Example: Todo List Manager
+-- A simple command-line todo list application
+
+module Main
+
+import python sys
+import python json
+import python os.path
+
+-- Data types
+
+type Todo = {
+  id: Int,
+  title: String,
+  completed: Bool
+}
+
+type TodoList = {
+  todos: List Todo,
+  nextId: Int
+}
+
+-- File operations
+
+def dataFile() : String =
+  let home = os.path.expanduser("~")
+  in home ++ "/.pfn-todos.json"
+
+def loadTodos() : IO TodoList =
+  let path = dataFile()
+  in if os.path.exists(path)
+    then
+      try
+        let content = readFile(path)
+        let data = json.loads(content)
+        pure({
+          todos: map parseTodo (data.get("todos", [])),
+          nextId: data.get("nextId", 1)
+        })
+      catch
+        _ -> pure({ todos: [], nextId: 1 })
+    else pure({ todos: [], nextId: 1 })
+
+def saveTodos(list: TodoList) : IO () =
+  let path = dataFile()
+  let data = {
+    todos: map todoToJson list.todos,
+    nextId: list.nextId
+  }
+  writeFile(path, json.dumps(data, indent=2))
+
+def parseTodo(obj: Py a) : Todo =
+  {
+    id: obj.get("id", 0),
+    title: obj.get("title", ""),
+    completed: obj.get("completed", False)
+  }
+
+def todoToJson(todo: Todo) : Py a =
+  { "id": todo.id, "title": todo.title, "completed": todo.completed }
+
+-- Todo operations
+
+def addTodo(list: TodoList, title: String) : TodoList =
+  let newTodo = { id: list.nextId, title: title, completed: False }
+  in {
+    todos: list.todos ++ [newTodo],
+    nextId: list.nextId + 1
+  }
+
+def removeTodo(list: TodoList, id: Int) : TodoList =
+  { list with todos = filter (t => t.id != id) list.todos }
+
+def toggleTodo(list: TodoList, id: Int) : TodoList =
+  { list with todos = map (t =>
+    if t.id == id
+      then { t with completed = not t.completed }
+      else t
+  ) list.todos }
+
+def findTodo(list: TodoList, id: Int) : Option Todo =
+  find (t => t.id == id) list.todos
+
+-- Display
+
+def showTodo(todo: Todo) : String =
+  let status = if todo.completed then "[x]" else "[ ]"
+  in status ++ " " ++ toString(todo.id) ++ ". " ++ todo.title
+
+def showList(list: TodoList) : String =
+  if null list.todos
+    then "No todos yet!"
+    else join "\n" (map showTodo list.todos)
+
+-- Commands
+
+def cmdAdd(list: TodoList, args: List String) : IO TodoList =
+  match args with
+    [] ->
+      putStrLn "Usage: add <title>" >> pure list
+    title :: _ ->
+      let newList = addTodo(list, title)
+      in saveTodos(newList) >>
+         putStrLn ("Added: " ++ title) >>
+         pure newList
+
+def cmdRemove(list: TodoList, args: List String) : IO TodoList =
+  match args with
+    [] ->
+      putStrLn "Usage: remove <id>" >> pure list
+    idStr :: _ ->
+      match toInt(idStr) of
+        Nothing ->
+          putStrLn "Invalid id" >> pure list
+        Just id ->
+          match findTodo(list, id) of
+            Nothing ->
+              putStrLn ("Todo " ++ toString(id) ++ " not found") >> pure list
+            Just todo ->
+              let newList = removeTodo(list, id)
+              in saveTodos(newList) >>
+                 putStrLn ("Removed: " ++ todo.title) >>
+                 pure newList
+
+def cmdToggle(list: TodoList, args: List String) : IO TodoList =
+  match args with
+    [] ->
+      putStrLn "Usage: toggle <id>" >> pure list
+    idStr :: _ ->
+      match toInt(idStr) of
+        Nothing ->
+          putStrLn "Invalid id" >> pure list
+        Just id ->
+          match findTodo(list, id) of
+            Nothing ->
+              putStrLn ("Todo " ++ toString(id) ++ " not found") >> pure list
+            Just todo ->
+              let newList = toggleTodo(list, id)
+              in saveTodos(newList) >>
+                 putStrLn ("Toggled: " ++ todo.title) >>
+                 pure newList
+
+def cmdList(list: TodoList) : IO TodoList =
+  putStrLn (showList(list)) >> pure list
+
+def cmdHelp() : IO () =
+  putStrLn """
+    Todo List Manager
+    
+    Commands:
+      add <title>    Add a new todo
+      remove <id>    Remove a todo
+      toggle <id>    Toggle todo completion
+      list           List all todos
+      help           Show this help
+      quit           Exit the program
+  """
+
+-- Main loop
+
+def processCommand(list: TodoList, cmd: String, args: List String) : IO (Option TodoList) =
+  match cmd with
+    "add" -> map Just (cmdAdd(list, args))
+    "remove" -> map Just (cmdRemove(list, args))
+    "toggle" -> map Just (cmdToggle(list, args))
+    "list" -> map Just (cmdList(list))
+    "help" -> cmdHelp() >> pure (Just list)
+    "quit" -> pure Nothing
+    _ -> putStrLn ("Unknown command: " ++ cmd ++ ". Type 'help' for usage.") >> pure (Just list)
+
+def repl(list: TodoList) : IO () =
+  putStr "todo> " >>
+  getLine >>= (line =>
+    let parts = words(line)
+    in match parts with
+      [] -> repl(list)
+      cmd :: args ->
+        processCommand(list, cmd, args) >>= (result =>
+          match result with
+            Nothing -> putStrLn "Goodbye!"
+            Just newList -> repl(newList)
+        )
+  )
+
+def main : IO () =
+  putStrLn "Todo List Manager (type 'help' for commands)" >>
+  loadTodos() >>= (list =>
+    repl(list)
+  )

@@ -1,0 +1,195 @@
+-- Data Processing Example: CSV Analysis Tool
+-- Process and analyze CSV data using pandas
+
+module Main
+
+import python pandas as pd
+import python numpy as np
+import python sys
+import python argparse
+
+-- Data types
+
+type ColumnStats = {
+  name: String,
+  count: Int,
+  mean: Float,
+  std: Float,
+  min: Float,
+  max: Float
+}
+
+type AnalysisResult = {
+  filename: String,
+  rows: Int,
+  columns: Int,
+  stats: List ColumnStats,
+  missingValues: Dict String Int
+}
+
+-- Load data
+
+def loadCSV(path: String) : Result String (Py DataFrame) =
+  try
+    Ok (pd.read_csv(path))
+  catch
+    e -> Error ("Failed to load CSV: " ++ toString(e))
+
+-- Calculate statistics
+
+def calculateStats(df: Py DataFrame) : List ColumnStats =
+  let numericCols = df.select_dtypes(include=[np.number]).columns
+  in map (col => {
+    name: col,
+    count: df[col].count(),
+    mean: df[col].mean(),
+    std: df[col].std(),
+    min: df[col].min(),
+    max: df[col].max()
+  }) (toList numericCols)
+
+-- Count missing values
+
+def countMissing(df: Py DataFrame) : Dict String Int =
+  let missing = df.isnull().sum()
+      cols = toList (df.columns)
+  in Dict.fromList (map (col => (col, missing[col])) cols)
+
+-- Format output
+
+def formatStats(stats: ColumnStats) : String =
+  String.padRight(20, ' ', stats.name) ++ " " ++
+  String.padLeft(10, ' ', toString(stats.count)) ++ " " ++
+  String.padLeft(12, ' ', formatFloat(stats.mean, 2)) ++ " " ++
+  String.padLeft(12, ' ', formatFloat(stats.std, 2)) ++ " " ++
+  String.padLeft(12, ' ', formatFloat(stats.min, 2)) ++ " " ++
+  String.padLeft(12, ' ', formatFloat(stats.max, 2))
+
+def formatFloat(f: Float, decimals: Int) : String =
+  -- Format float with specified decimal places
+  let format = "{:." ++ toString(decimals) ++ "f}"
+  in format.format(f)
+
+-- Display results
+
+def displayResult(result: AnalysisResult) : IO () =
+  putStrLn "\n========================================" >>
+  putStrLn ("Analysis: " ++ result.filename) >>
+  putStrLn "========================================" >>
+  putStrLn ("Rows: " ++ toString(result.rows)) >>
+  putStrLn ("Columns: " ++ toString(result.columns)) >>
+  putStrLn "\n--- Numeric Column Statistics ---" >>
+  putStrLn (String.padRight(20, ' ', "Column") ++ " " ++
+            String.padLeft(10, ' ', "Count") ++ " " ++
+            String.padLeft(12, ' ', "Mean") ++ " " ++
+            String.padLeft(12, ' ', "Std") ++ " " ++
+            String.padLeft(12, ' ', "Min") ++ " " ++
+            String.padLeft(12, ' ', "Max")) >>
+  putStrLn (String.repeat(80, '-')) >>
+  mapM_ (stats => putStrLn(formatStats(stats))) result.stats >>
+  putStrLn "\n--- Missing Values ---" >>
+  let missingList = Dict.toList(result.missingValues)
+      totalMissing = sum (map snd missingList)
+  in
+    putStrLn ("Total missing: " ++ toString(totalMissing)) >>
+    mapM_ ((col, count) =>
+      if count > 0
+        then putStrLn ("  " ++ col ++ ": " ++ toString(count))
+        else pure()
+    ) missingList >>
+    putStrLn ""
+
+-- Data transformations
+
+def cleanData(df: Py DataFrame) : Py DataFrame =
+  -- Remove rows with all NaN values
+  df.dropna(how="all")
+
+def fillMissing(df: Py DataFrame, value: Float = 0.0) : Py DataFrame =
+  df.fillna(value)
+
+def normalizeColumn(df: Py DataFrame, col: String) : Py DataFrame =
+  let mean = df[col].mean()
+      std = df[col].std()
+  in df.assign(**{ col: (df[col] - mean) / std })
+
+def aggregateByColumn(df: Py DataFrame, groupCol: String, aggCol: String) : Py DataFrame =
+  df.groupby(groupCol)[aggCol].agg(["mean", "std", "count"])
+
+-- Export functions
+
+def saveCSV(df: Py DataFrame, path: String) : Result String () =
+  try
+    df.to_csv(path, index=False)
+    Ok ()
+  catch
+    e -> Error ("Failed to save CSV: " ++ toString(e))
+
+def saveJSON(df: Py DataFrame, path: String) : Result String () =
+  try
+    df.to_json(path, orient="records")
+    Ok ()
+  catch
+    e -> Error ("Failed to save JSON: " ++ toString(e))
+
+-- Command line interface
+
+def parseArgs() : Py Namespace =
+  let parser = argparse.ArgumentParser(description="CSV Data Analysis Tool")
+  in
+    parser.add_argument("input", help="Input CSV file")
+    parser.add_argument("-o", "--output", help="Output file (CSV or JSON)")
+    parser.add_argument("--clean", action="store_true", help="Clean data (remove empty rows)")
+    parser.add_argument("--fill", type=float, help="Fill missing values with specified value")
+    parser.add_argument("--normalize", help="Normalize specified column")
+    parser.add_argument("--group-by", help="Group by column for aggregation")
+    parser.add_argument("--aggregate", help="Column to aggregate")
+    parser.parse_args()
+
+def processFile(args: Py Namespace) : IO () =
+  match loadCSV(args.input) with
+    Error msg ->
+      putStrLn ("Error: " ++ msg)
+    Ok df ->
+      -- Apply transformations
+      let df1 = if args.clean then cleanData(df) else df
+          df2 = match args.fill with
+            Just value -> fillMissing(df1, value)
+            Nothing -> df1
+          df3 = match args.normalize with
+            Just col -> normalizeColumn(df2, col)
+            Nothing -> df2
+          df4 = match (args.group_by, args.aggregate) with
+            (Just groupCol, Just aggCol) ->
+              let aggDf = aggregateByColumn(df3, groupCol, aggCol)
+              in aggDf.reset_index()
+            _ -> df3
+      in
+        -- Analyze and display
+        let result = {
+          filename: args.input,
+          rows: len(df4),
+          columns: len(df4.columns),
+          stats: calculateStats(df4),
+          missingValues: countMissing(df4)
+        }
+        in
+          displayResult(result) >>
+          -- Save output if specified
+          match args.output with
+            Just outputPath ->
+              if String.endsWith(".json", outputPath)
+                then
+                  match saveJSON(df4, outputPath) with
+                    Ok _ -> putStrLn ("Saved JSON to: " ++ outputPath)
+                    Error msg -> putStrLn ("Error saving: " ++ msg)
+                else
+                  match saveCSV(df4, outputPath) with
+                    Ok _ -> putStrLn ("Saved CSV to: " ++ outputPath)
+                    Error msg -> putStrLn ("Error saving: " ++ msg)
+            Nothing ->
+              pure()
+
+def main : IO () =
+  let args = parseArgs()
+  in processFile(args)

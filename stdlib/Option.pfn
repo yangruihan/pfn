@@ -1,0 +1,190 @@
+-- Pfn Standard Library: Option
+-- Utilities for working with optional values
+
+module Option
+
+-- Type definition (re-exported from Prelude)
+-- type Maybe a
+--     | Nothing
+--     | Just a
+
+-- Basic operations
+
+def isNothing m =
+    match m with
+        Nothing -> True
+        _ -> False
+
+def isJust m =
+    match m with
+        Just _ -> True
+        _ -> False
+
+def fromJust m =
+    match m with
+        Just x -> x
+        Nothing -> error "Option.fromJust: Nothing"
+
+def fromMaybe default m =
+    match m with
+        Nothing -> default
+        Just x -> x
+
+def maybe default f m =
+    match m with
+        Nothing -> default
+        Just x -> f x
+
+-- Transformations
+
+def map f m =
+    match m with
+        Nothing -> Nothing
+        Just x -> Just (f x)
+
+def map2 f ma mb =
+    match (ma, mb) with
+        (Just a, Just b) -> Just (f a b)
+        _ -> Nothing
+
+def map3 f ma mb mc =
+    match (ma, mb, mc) with
+        (Just a, Just b, Just c) -> Just (f a b c)
+        _ -> Nothing
+
+def map4 f ma mb mc md =
+    match (ma, mb, mc, md) with
+        (Just a, Just b, Just c, Just d) -> Just (f a b c d)
+        _ -> Nothing
+
+def map5 f ma mb mc md me =
+    match (ma, mb, mc, md, me) with
+        (Just a, Just b, Just c, Just d, Just e) -> Just (f a b c d e)
+        _ -> Nothing
+
+-- Chaining
+
+def andThen f m =
+    match m with
+        Nothing -> Nothing
+        Just x -> f x
+
+def flatten mm =
+    match mm with
+        Nothing -> Nothing
+        Just m -> m
+
+-- Filtering
+
+def filter p m =
+    match m with
+        Nothing -> Nothing
+        Just x -> if p x then Just x else Nothing
+
+def filterMap f xs =
+    match xs with
+        [] -> []
+        x :: xs ->
+            match f x with
+                Nothing -> filterMap f xs
+                Just y -> y :: filterMap f xs
+
+-- Combining
+
+def orElse ma mb =
+    match ma with
+        Nothing -> mb
+        Just _ -> ma
+
+def firstJust xs =
+    match xs with
+        [] -> Nothing
+        x :: xs -> match x with
+            Nothing -> firstJust xs
+            Just _ -> x
+
+-- Conversions
+
+def toList m =
+    match m with
+        Nothing -> []
+        Just x -> [x]
+
+def fromList xs =
+    match xs with
+        [] -> Nothing
+        x :: _ -> Just x
+
+def fromResult r =
+    match r with
+        Ok x -> Just x
+        Error _ -> Nothing
+
+def toResult err m =
+    match m with
+        Nothing -> Error err
+        Just x -> Ok x
+
+-- Traversals
+
+def traverse f m =
+    match m with
+        Nothing -> pure Nothing
+        Just x -> map Just (f x)
+
+def sequence m =
+    match m with
+        Nothing -> pure Nothing
+        Just x -> map Just x
+
+-- List operations
+
+def catMaybes xs =
+    match xs with
+        [] -> []
+        x :: xs ->
+            match x with
+                Nothing -> catMaybes xs
+                Just y -> y :: catMaybes xs
+
+def mapMaybe f xs =
+    match xs with
+        [] -> []
+        x :: xs ->
+            match f x with
+                Nothing -> mapMaybe f xs
+                Just y -> y :: mapMaybe f xs
+
+-- Comparison
+
+def equalBy eq ma mb =
+    match (ma, mb) with
+        (Nothing, Nothing) -> True
+        (Just a, Just b) -> eq a b
+        _ -> False
+
+def compareBy cmp ma mb =
+    match (ma, mb) with
+        (Nothing, Nothing) -> EQ
+        (Nothing, Just _) -> LT
+        (Just _, Nothing) -> GT
+        (Just a, Just b) -> cmp a b
+
+-- Utilities
+
+def unwrap default f m =
+    match m with
+        Nothing -> default
+        Just x -> f x
+
+def tap f m =
+    match m with
+        Nothing -> Nothing
+        Just x ->
+            let _ = f x
+            in Just x
+
+def caseOf m nothingCase justCase =
+    match m with
+        Nothing -> nothingCase
+        Just x -> justCase x

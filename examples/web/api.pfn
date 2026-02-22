@@ -1,0 +1,148 @@
+-- Web Application Example: Simple REST API Server
+-- A basic web server using Flask
+
+module Main
+
+import python flask
+import python json
+
+-- Create Flask app
+let app = flask.Flask("pfn-api")
+
+-- Data types
+
+type User = {
+  id: Int,
+  name: String,
+  email: String
+}
+
+type CreateUser = {
+  name: String,
+  email: String
+}
+
+-- In-memory database
+
+let users: Dict Int User = {}
+let nextId = 1
+
+-- Helper functions
+
+def userToJson(user: User) : Py a =
+  { "id": user.id, "name": user.name, "email": user.email }
+
+def jsonError(message: String) : Py a =
+  { "error": message }
+
+def jsonResponse(data: Py a, status: Int = 200) : Py Response =
+  let response = flask.jsonify(data)
+  in response
+
+-- Routes
+
+-- GET / - API info
+@app.route("/")
+def index() : String =
+  json.dumps({
+    "name": "Pfn REST API",
+    "version": "1.0.0",
+    "endpoints": {
+      "users": "/users",
+      "user": "/users/<id>"
+    }
+  })
+
+-- GET /users - List all users
+@app.route("/users")
+@app.route("/users/")
+def listUsers() : Py Response =
+  let userList = map userToJson (Dict.values(users))
+  in jsonResponse({ "users": userList })
+
+-- GET /users/<id> - Get user by ID
+@app.route("/users/<int:id>")
+def getUser(id: Int) : Py Response =
+  match Dict.lookup(id, users) of
+    Nothing ->
+      jsonResponse(jsonError("User not found"), 404)
+    Just user ->
+      jsonResponse(userToJson(user))
+
+-- POST /users - Create new user
+@app.route("/users", methods=["POST"])
+@app.route("/users/", methods=["POST"])
+def createUser() : Py Response =
+  let data = flask.request.get_json()
+  in
+    if not data
+      then jsonResponse(jsonError("No data provided"), 400)
+      else
+        let name = data.get("name", "")
+            email = data.get("email", "")
+        in
+          if name == "" || email == ""
+            then jsonResponse(jsonError("Name and email required"), 400)
+            else
+              let user = { id: nextId, name: name, email: email }
+                  newUsers = Dict.insert(nextId, user, users)
+                  newNextId = nextId + 1
+              in
+                -- Update state (in real app, use database)
+                users = newUsers
+                nextId = newNextId
+                jsonResponse(userToJson(user), 201)
+
+-- PUT /users/<id> - Update user
+@app.route("/users/<int:id>", methods=["PUT"])
+def updateUser(id: Int) : Py Response =
+  match Dict.lookup(id, users) of
+    Nothing ->
+      jsonResponse(jsonError("User not found"), 404)
+    Just user ->
+      let data = flask.request.get_json()
+      in
+        if not data
+          then jsonResponse(jsonError("No data provided"), 400)
+          else
+            let updatedUser = {
+              id: id,
+              name: data.get("name", user.name),
+              email: data.get("email", user.email)
+            }
+                newUsers = Dict.insert(id, updatedUser, users)
+            in
+              users = newUsers
+              jsonResponse(userToJson(updatedUser))
+
+-- DELETE /users/<id> - Delete user
+@app.route("/users/<int:id>", methods=["DELETE"])
+def deleteUser(id: Int) : Py Response =
+  match Dict.lookup(id, users) of
+    Nothing ->
+      jsonResponse(jsonError("User not found"), 404)
+    Just user ->
+      let newUsers = Dict.remove(id, users)
+      in
+        users = newUsers
+        jsonResponse({ "message": "User deleted", "id": id })
+
+-- Error handlers
+
+@app.errorhandler(404)
+def notFound(error: Py a) : Py Response =
+  jsonResponse(jsonError("Not found"), 404)
+
+@app.errorhandler(500)
+def serverError(error: Py a) : Py Response =
+  jsonResponse(jsonError("Internal server error"), 500)
+
+-- Main entry point
+
+def main : IO () =
+  putStrLn "Starting server on http://localhost:5000" >>
+  app.run(host="0.0.0.0", port=5000, debug=True)
+
+-- Run the app
+if __name__ == "__main__":
+  main()
