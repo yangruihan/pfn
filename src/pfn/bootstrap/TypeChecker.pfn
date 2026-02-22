@@ -35,9 +35,9 @@ def freshVar(state: TypeCheckerState) : (Type, TypeCheckerState) =
 -- Instantiate a type scheme with fresh type variables
 def instantiate(state: TypeCheckerState, scheme: Scheme) : (Type, TypeCheckerState) =
   if List.isEmpty(scheme.vars) then
-    (scheme.type, state)
+    (scheme.typ, state)
   else
-    instantiateVars(state, scheme.vars, emptySubst, scheme.type)
+    instantiateVars(state, scheme.vars, emptySubst, scheme.typ)
 
 def instantiateVars(state: TypeCheckerState, vars: List String, subst: Subst, t: Type) : (Type, TypeCheckerState) =
   match vars with
@@ -52,19 +52,19 @@ def generalize(env: TypeEnv, t: Type) : Scheme =
   let envVars = freeVarsEnv(env)
   in let typeVars = freeVars(t)
   in let genVars = Set.toList(Set.difference(typeVars, envVars))
-  in { vars: genVars, type: t }
+  in { vars: genVars, typ: t }
 
 -- ============ Type Inference ============
 
 -- Result of type inference
 type InferResult = {
-  type: Type,
+  typ: Type,
   subst: Subst,
   state: TypeCheckerState
 }
 
 def inferResult(t: Type, subst: Subst, state: TypeCheckerState) : InferResult =
-  { type: t, subst: subst, state: state }
+  { typ: t, subst: subst, state: state }
 
 -- Infer the type of an expression
 def infer(state: TypeCheckerState, expr: Expr) : Result TypeError InferResult =
@@ -149,7 +149,7 @@ def inferExpr(state: TypeCheckerState, subst: Subst, expr: Expr) : Result TypeEr
 def inferLambda(state: TypeCheckerState, subst: Subst, params: List Param, body: Expr, paramTypes: List Type) : Result TypeError InferResult =
   match params with
     [] ->
-      let resultType = buildFunType(List.reverse(paramTypes), applySubst(subst, inferResult.type))
+      let resultType = buildFunType(List.reverse(paramTypes), applySubst(subst, inferResult.typ))
       in -- Need to infer body first
       inferLambdaBody(state, subst, paramTypes, body)
     [p | rest] ->
@@ -160,7 +160,7 @@ def inferLambda(state: TypeCheckerState, subst: Subst, params: List Param, body:
 def inferLambdaBody(state: TypeCheckerState, subst: Subst, paramTypes: List Type, body: Expr) : Result TypeError InferResult =
   match inferExpr(state, subst, body) with
     Ok(result) ->
-      let resultType = buildFunType(List.reverse(paramTypes), result.type)
+      let resultType = buildFunType(List.reverse(paramTypes), result.typ)
       in Ok(inferResult(resultType, result.subst, result.state))
     Err(e) -> Err(e)
 
@@ -174,7 +174,7 @@ def buildFunType(params: List Type, result: Type) : Type =
 def inferApp(state: TypeCheckerState, subst: Subst, func: Expr, args: List Expr) : Result TypeError InferResult =
   match inferExpr(state, subst, func) with
     Ok(funcResult) ->
-      inferAppArgs(funcResult.state, funcResult.subst, funcResult.type, args)
+      inferAppArgs(funcResult.state, funcResult.subst, funcResult.typ, args)
     Err(e) -> Err(e)
 
 def inferAppArgs(state: TypeCheckerState, subst: Subst, funcType: Type, args: List Expr) : Result TypeError InferResult =
@@ -184,7 +184,7 @@ def inferAppArgs(state: TypeCheckerState, subst: Subst, funcType: Type, args: Li
       match inferExpr(state, subst, arg) with
         Ok(argResult) ->
           let (resultType, s1) = freshVar(argResult.state)
-          in match unify(applySubst(argResult.subst, funcType), tFun(applySubst(argResult.subst, argResult.type), resultType)) with
+          in match unify(applySubst(argResult.subst, funcType), tFun(applySubst(argResult.subst, argResult.typ), resultType)) with
             Just(newSubst) ->
               let composed = composeSubst(newSubst, argResult.subst)
               in inferAppArgs(s1, composed, applySubst(composed, resultType), rest)
@@ -199,7 +199,7 @@ def inferBinOp(state: TypeCheckerState, subst: Subst, left: Expr, op: String, ri
     Ok(leftResult) ->
       match inferExpr(leftResult.state, leftResult.subst, right) with
         Ok(rightResult) ->
-          inferBinOpType(rightResult.state, rightResult.subst, leftResult.type, op, rightResult.type)
+          inferBinOpType(rightResult.state, rightResult.subst, leftResult.typ, op, rightResult.typ)
         Err(e) -> Err(e)
     Err(e) -> Err(e)
 
@@ -299,14 +299,14 @@ def inferUnaryOp(state: TypeCheckerState, subst: Subst, op: String, operand: Exp
   match inferExpr(state, subst, operand) with
     Ok(result) ->
       if op == "-" then
-        match unify(applySubst(result.subst, result.type), TInt) with
+        match unify(applySubst(result.subst, result.typ), TInt) with
           Just(s) -> Ok(inferResult(TInt, composeSubst(s, result.subst), result.state))
           Nothing ->
-            match unify(applySubst(result.subst, result.type), TFloat) with
+            match unify(applySubst(result.subst, result.typ), TFloat) with
               Just(s) -> Ok(inferResult(TFloat, composeSubst(s, result.subst), result.state))
               Nothing -> Err(typeError("Expected Int or Float for -"))
       else if op == "!" then
-        match unify(applySubst(result.subst, result.type), TBool) with
+        match unify(applySubst(result.subst, result.typ), TBool) with
           Just(s) -> Ok(inferResult(TBool, composeSubst(s, result.subst), result.state))
           Nothing -> Err(typeError("Expected Bool for !"))
       else
@@ -318,15 +318,15 @@ def inferUnaryOp(state: TypeCheckerState, subst: Subst, op: String, operand: Exp
 def inferIf(state: TypeCheckerState, subst: Subst, cond: Expr, thenBranch: Expr, elseBranch: Expr) : Result TypeError InferResult =
   match inferExpr(state, subst, cond) with
     Ok(condResult) ->
-      match unify(applySubst(condResult.subst, condResult.type), TBool) with
+      match unify(applySubst(condResult.subst, condResult.typ), TBool) with
         Just(s1) ->
           let composed1 = composeSubst(s1, condResult.subst)
           in match inferExpr(condResult.state, composed1, thenBranch) with
             Ok(thenResult) ->
               match inferExpr(thenResult.state, thenResult.subst, elseBranch) with
                 Ok(elseResult) ->
-                  match unify(applySubst(elseResult.subst, thenResult.type), elseResult.type) with
-                    Just(s2) -> Ok(inferResult(applySubst(composeSubst(s2, elseResult.subst), thenResult.type), composeSubst(s2, elseResult.subst), elseResult.state))
+                  match unify(applySubst(elseResult.subst, thenResult.typ), elseResult.typ) with
+                    Just(s2) -> Ok(inferResult(applySubst(composeSubst(s2, elseResult.subst), thenResult.typ), composeSubst(s2, elseResult.subst), elseResult.state))
                     Nothing -> Err(typeError("If branches must have same type"))
                 Err(e) -> Err(e)
             Err(e) -> Err(e)
@@ -338,7 +338,7 @@ def inferIf(state: TypeCheckerState, subst: Subst, cond: Expr, thenBranch: Expr,
 def inferLet(state: TypeCheckerState, subst: Subst, name: String, value: Expr, body: Expr) : Result TypeError InferResult =
   match inferExpr(state, subst, value) with
     Ok(valueResult) ->
-      let scheme = generalize(valueResult.state.env, applySubst(valueResult.subst, valueResult.type))
+      let scheme = generalize(valueResult.state.env, applySubst(valueResult.subst, valueResult.typ))
       in let newEnv = extendEnv(valueResult.state.env, name, scheme)
       in match inferExpr({ valueResult.state with env = newEnv }, valueResult.subst, body) with
         Ok(bodyResult) -> Ok(bodyResult)
@@ -358,7 +358,7 @@ def inferLetFuncParams(state: TypeCheckerState, subst: Subst, params: List Param
   match params with
     [] ->
       match inferExpr(state, subst, value) with
-        Ok(result) -> cont(result.state, paramTypes, applySubst(result.subst, result.type))
+        Ok(result) -> cont(result.state, paramTypes, applySubst(result.subst, result.typ))
         Err(e) -> Err(e)
     [p | rest] ->
       let (tv, s1) = freshVar(state)
@@ -375,7 +375,7 @@ def inferList(state: TypeCheckerState, subst: Subst, elements: List Expr) : Resu
     [first | rest] ->
       match inferExpr(state, subst, first) with
         Ok(firstResult) ->
-          inferListElements(firstResult.state, firstResult.subst, firstResult.type, rest)
+          inferListElements(firstResult.state, firstResult.subst, firstResult.typ, rest)
         Err(e) -> Err(e)
 
 def inferListElements(state: TypeCheckerState, subst: Subst, elemType: Type, elements: List Expr) : Result TypeError InferResult =
@@ -384,7 +384,7 @@ def inferListElements(state: TypeCheckerState, subst: Subst, elemType: Type, ele
     [e | rest] ->
       match inferExpr(state, subst, e) with
         Ok(result) ->
-          match unify(applySubst(result.subst, elemType), applySubst(result.subst, result.type)) with
+          match unify(applySubst(result.subst, elemType), applySubst(result.subst, result.typ)) with
             Just(s) ->
               inferListElements(result.state, composeSubst(s, result.subst), applySubst(composeSubst(s, result.subst), elemType), rest)
             Nothing -> Err(typeError("List elements must have same type"))
@@ -401,7 +401,7 @@ def inferTupleElements(state: TypeCheckerState, subst: Subst, types: List Type, 
     [e | rest] ->
       match inferExpr(state, subst, e) with
         Ok(result) ->
-          inferTupleElements(result.state, result.subst, [applySubst(result.subst, result.type)] ++ types, rest)
+          inferTupleElements(result.state, result.subst, [applySubst(result.subst, result.typ)] ++ types, rest)
         Err(e) -> Err(e)
 
 -- ============ Match Inference ============
@@ -414,7 +414,7 @@ def inferMatch(state: TypeCheckerState, subst: Subst, scrutinee: Expr, cases: Li
         in Ok(inferResult(tv, scrutineeResult.subst, s1))
       else
         let (resultType, s1) = freshVar(scrutineeResult.state)
-        in inferMatchCases(s1, scrutineeResult.subst, scrutineeResult.type, resultType, cases)
+        in inferMatchCases(s1, scrutineeResult.subst, scrutineeResult.typ, resultType, cases)
     Err(e) -> Err(e)
 
 def inferMatchCases(state: TypeCheckerState, subst: Subst, scrutineeType: Type, resultType: Type, cases: List MatchCase) : Result TypeError InferResult =
@@ -429,7 +429,7 @@ def inferMatchCases(state: TypeCheckerState, subst: Subst, scrutineeType: Type, 
               in let envWithPattern = mergeEnv(state.env, patternEnv)
               in match inferExpr({ state with env = envWithPattern }, composed, c.body) with
                 Ok(bodyResult) ->
-                  match unify(applySubst(bodyResult.subst, resultType), bodyResult.type) with
+                  match unify(applySubst(bodyResult.subst, resultType), bodyResult.typ) with
                     Just(s3) ->
                       inferMatchCases(bodyResult.state, composeSubst(s3, bodyResult.subst), applySubst(composeSubst(s3, bodyResult.subst), scrutineeType), applySubst(composeSubst(s3, bodyResult.subst), resultType), rest)
                     Nothing -> Err(typeError("Match cases must have same type"))
@@ -517,7 +517,7 @@ def inferIndexAccess(state: TypeCheckerState, subst: Subst, expr: Expr, index: E
     Ok(exprResult) ->
       match inferExpr(exprResult.state, exprResult.subst, index) with
         Ok(indexResult) ->
-          match unify(applySubst(indexResult.subst, indexResult.type), TInt) with
+          match unify(applySubst(indexResult.subst, indexResult.typ), TInt) with
             Just(s) ->
               let (tv, s1) = freshVar(indexResult.state)
               in Ok(inferResult(tv, composeSubst(s, indexResult.subst), s1))

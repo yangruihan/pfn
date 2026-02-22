@@ -44,7 +44,7 @@ type TConData = {
 -- Type scheme (polymorphic types)
 type Scheme = {
   vars: List String,
-  type: Type
+  typ: Type
 }
 
 -- ============ Type Environment ============
@@ -77,23 +77,23 @@ def singletonSubst(name: String, t: Type) : Subst =
 -- Apply substitution to a type
 def applySubst(subst: Subst, t: Type) : Type =
   match t with
-    TInt -> TInt
-    TFloat -> TFloat
-    TString -> TString
-    TBool -> TBool
-    TChar -> TChar
-    TUnit -> TUnit
-    TVar(data) ->
+    | TInt -> TInt
+    | TFloat -> TFloat
+    | TString -> TString
+    | TBool -> TBool
+    | TChar -> TChar
+    | TUnit -> TUnit
+    | TVar(data) ->
       match Dict.lookup(data.name, subst.mapping) with
-        Just(t2) -> applySubst(subst, t2)
-        Nothing -> t
-    TFun(data) ->
+        | Just(t2) -> applySubst(subst, t2)
+        | Nothing -> t
+    | TFun(data) ->
       TFun({ param: applySubst(subst, data.param), result: applySubst(subst, data.result) })
-    TList(data) ->
+    | TList(data) ->
       TList({ elem: applySubst(subst, data.elem) })
-    TTuple(data) ->
+    | TTuple(data) ->
       TTuple({ elements: List.map(\x -> applySubst(subst, x), data.elements) })
-    TCon(data) ->
+    | TCon(data) ->
       TCon({ name: data.name, args: List.map(\x -> applySubst(subst, x), data.args) })
 
 -- Compose two substitutions
@@ -106,17 +106,17 @@ def composeSubst(s1: Subst, s2: Subst) : Subst =
 -- Get free type variables in a type
 def freeVars(t: Type) : Set String =
   match t with
-    TInt -> Set.empty()
-    TFloat -> Set.empty()
-    TString -> Set.empty()
-    TBool -> Set.empty()
-    TChar -> Set.empty()
-    TUnit -> Set.empty()
-    TVar(data) -> Set.singleton(data.name)
-    TFun(data) -> Set.union(freeVars(data.param), freeVars(data.result))
-    TList(data) -> freeVars(data.elem)
-    TTuple(data) -> List.foldl(\acc x -> Set.union(acc, freeVars(x)), Set.empty(), data.elements)
-    TCon(data) -> List.foldl(\acc x -> Set.union(acc, freeVars(x)), Set.empty(), data.args)
+    | TInt -> Set.empty()
+    | TFloat -> Set.empty()
+    | TString -> Set.empty()
+    | TBool -> Set.empty()
+    | TChar -> Set.empty()
+    | TUnit -> Set.empty()
+    | TVar(data) -> Set.singleton(data.name)
+    | TFun(data) -> Set.union(freeVars(data.param), freeVars(data.result))
+    | TList(data) -> freeVars(data.elem)
+    | TTuple(data) -> List.foldl(\acc x -> Set.union(acc, freeVars(x)), Set.empty(), data.elements)
+    | TCon(data) -> List.foldl(\acc x -> Set.union(acc, freeVars(x)), Set.empty(), data.args)
 
 -- Get free variables in a scheme
 def freeVarsScheme(scheme: Scheme) : Set String =
@@ -135,54 +135,54 @@ def occursIn(name: String, t: Type) : Bool =
 -- Unify two types, returning a substitution or Nothing on failure
 def unify(t1: Type, t2: Type) : Maybe Subst =
   match (t1, t2) with
-    (TInt, TInt) -> Just(emptySubst)
-    (TFloat, TFloat) -> Just(emptySubst)
-    (TString, TString) -> Just(emptySubst)
-    (TBool, TBool) -> Just(emptySubst)
-    (TChar, TChar) -> Just(emptySubst)
-    (TUnit, TUnit) -> Just(emptySubst)
-    (TVar(d1), TVar(d2)) ->
+    | (TInt, TInt) -> Just(emptySubst)
+    | (TFloat, TFloat) -> Just(emptySubst)
+    | (TString, TString) -> Just(emptySubst)
+    | (TBool, TBool) -> Just(emptySubst)
+    | (TChar, TChar) -> Just(emptySubst)
+    | (TUnit, TUnit) -> Just(emptySubst)
+    | (TVar(d1), TVar(d2)) ->
       if d1.name == d2.name then
         Just(emptySubst)
       else
         Just(singletonSubst(d1.name, t2))
-    (TVar(d), _) ->
+    | (TVar(d), _) ->
       if occursIn(d.name, t2) then
         Nothing
       else
         Just(singletonSubst(d.name, t2))
-    (_, TVar(d)) ->
+    | (_, TVar(d)) ->
       if occursIn(d.name, t1) then
         Nothing
       else
         Just(singletonSubst(d.name, t1))
-    (TFun(d1), TFun(d2)) ->
+    | (TFun(d1), TFun(d2)) ->
       match unify(d1.param, d2.param) with
-        Just(s1) ->
+        | Just(s1) ->
           let t1Result = applySubst(s1, d1.result)
           in let t2Result = applySubst(s1, d2.result)
           in match unify(t1Result, t2Result) with
-            Just(s2) -> Just(composeSubst(s2, s1))
-            Nothing -> Nothing
-        Nothing -> Nothing
-    (TList(d1), TList(d2)) ->
+            | Just(s2) -> Just(composeSubst(s2, s1))
+            | Nothing -> Nothing
+        | Nothing -> Nothing
+    | (TList(d1), TList(d2)) ->
       unify(d1.elem, d2.elem)
-    (TTuple(d1), TTuple(d2)) ->
+    | (TTuple(d1), TTuple(d2)) ->
       if List.length(d1.elements) == List.length(d2.elements) then
         unifyList(d1.elements, d2.elements, emptySubst)
       else
         Nothing
-    _ -> Nothing
+    | _ -> Nothing
 
 -- Unify lists of types
 def unifyList(ts1: List Type, ts2: List Type, subst: Subst) : Maybe Subst =
   match (ts1, ts2) with
-    ([], []) -> Just(subst)
-    ([t1 | rest1], [t2 | rest2]) ->
+    | ([], []) -> Just(subst)
+    | ([t1 | rest1], [t2 | rest2]) ->
       match unify(applySubst(subst, t1), applySubst(subst, t2)) with
-        Just(s) -> unifyList(rest1, rest2, composeSubst(s, subst))
-        Nothing -> Nothing
-    _ -> Nothing
+        | Just(s) -> unifyList(rest1, rest2, composeSubst(s, subst))
+        | Nothing -> Nothing
+    | _ -> Nothing
 
 -- ============ Type Helpers ============
 
@@ -208,32 +208,32 @@ def tCon(name: String, args: List Type) : Type =
 
 -- Create a monomorphic scheme
 def monoScheme(t: Type) : Scheme =
-  { vars: [], type: t }
+  { vars: [], typ: t }
 
 -- Create a polymorphic scheme
 def polyScheme(vars: List String, t: Type) : Scheme =
-  { vars: vars, type: t }
+  { vars: vars, typ: t }
 
 -- Convert type to string
 def typeToString(t: Type) : String =
   match t with
-    TInt -> "Int"
-    TFloat -> "Float"
-    TString -> "String"
-    TBool -> "Bool"
-    TChar -> "Char"
-    TUnit -> "()"
-    TVar(d) -> d.name
-    TFun(d) ->
+    | TInt -> "Int"
+    | TFloat -> "Float"
+    | TString -> "String"
+    | TBool -> "Bool"
+    | TChar -> "Char"
+    | TUnit -> "()"
+    | TVar(d) -> d.name
+    | TFun(d) ->
       let paramStr = match d.param with
-        TFun(_) -> "(" ++ typeToString(d.param) ++ ")"
-        _ -> typeToString(d.param)
+        | TFun(_) -> "(" ++ typeToString(d.param) ++ ")"
+        | _ -> typeToString(d.param)
       in paramStr ++ " -> " ++ typeToString(d.result)
-    TList(d) -> "[" ++ typeToString(d.elem) ++ "]"
-    TTuple(d) ->
+    | TList(d) -> "[" ++ typeToString(d.elem) ++ "]"
+    | TTuple(d) ->
       let elems = String.join(", ", List.map(typeToString, d.elements))
       in "(" ++ elems ++ ")"
-    TCon(d) ->
+    | TCon(d) ->
       if List.isEmpty(d.args) then
         d.name
       else

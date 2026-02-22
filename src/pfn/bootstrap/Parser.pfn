@@ -521,7 +521,7 @@ def parseInterfaceMethods(state: ParserState, methods: List InterfaceMethod) : R
             match parseTypeRef(s2) with
               Ok((typeRef, s3)) ->
                 let (mComma, s4) = matchToken(s3, [COMMA])
-                in parseInterfaceMethods(s4, methods ++ [{ name: getTokenString(nameTok), type: typeRef }])
+                in parseInterfaceMethods(s4, methods ++ [{ name: getTokenString(nameTok), typ: typeRef }])
               Err(e) -> Err(e)
           Err(e) -> Err(e)
       Err(e) -> Err(e)
@@ -607,7 +607,7 @@ def parseEffectOps(state: ParserState, ops: List EffectOp) : Result ParseError (
             match parseTypeRef(s2) with
               Ok((typeRef, s3)) ->
                 let (mComma, s4) = matchToken(s3, [COMMA])
-                in parseEffectOps(s4, ops ++ [{ name: getTokenString(nameTok), type: typeRef }])
+                in parseEffectOps(s4, ops ++ [{ name: getTokenString(nameTok), typ: typeRef }])
               Err(e) -> Err(e)
           Err(e) -> Err(e)
       Err(e) -> Err(e)

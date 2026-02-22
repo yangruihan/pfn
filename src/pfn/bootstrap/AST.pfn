@@ -269,7 +269,7 @@ type InterfaceDeclData = {
 
 type InterfaceMethod = {
   name: String,
-  type: TypeRef
+  typ: TypeRef
 }
 
 type ImplDeclData = {
@@ -291,7 +291,7 @@ type EffectDeclData = {
 
 type EffectOp = {
   name: String,
-  type: TypeRef
+  typ: TypeRef
 }
 
 type HandlerDeclData = {
