@@ -1,0 +1,353 @@
+-- Pfn Bootstrap: Lexer
+-- Lexical analyzer for Pfn source code
+
+module Bootstrap.Lexer
+
+import Bootstrap.Token
+
+-- Lexer error type
+type LexerError = {
+  message: String,
+  span: Span
+}
+
+-- Lexer state
+type LexerState = {
+  source: String,
+  pos: Int,
+  line: Int,
+  column: Int,
+  tokens: List Token
+}
+
+-- Result type for lexer operations
+type LexerResult a
+  | Ok a
+  | Error LexerError
+
+-- Create initial lexer state
+def initLexer(source: String) : LexerState =
+  { source: source, pos: 0, line: 1, column: 1, tokens: [] }
+
+-- Check if at end of source
+def atEnd(state: LexerState) : Bool =
+  state.pos >= String.length(state.source)
+
+-- Get current character
+def peek(state: LexerState) : Char =
+  if atEnd(state)
+    then '\0'
+    else String.unsafeAt(state.pos)(state.source)
+
+-- Peek at offset
+def peekOffset(offset: Int)(state: LexerState) : Char =
+  let pos = state.pos + offset
+  in if pos >= String.length(state.source)
+    then '\0'
+    else String.unsafeAt(pos)(state.source)
+
+-- Advance position and return character
+def advance(state: LexerState) : (Char, LexerState) =
+  let char = String.unsafeAt(state.pos)(state.source)
+      newState = if char == '\n'
+        then { state with pos = state.pos + 1, line = state.line + 1, column = 1 }
+        else { state with pos = state.pos + 1, column = state.column + 1 }
+  in (char, newState)
+
+-- Match expected character
+def match(expected: Char)(state: LexerState) : (Bool, LexerState) =
+  if atEnd(state) || String.unsafeAt(state.pos)(state.source) != expected
+    then (False, state)
+    else
+      let (_, newState) = advance(state)
+      in (True, newState)
+
+-- Create span at current position
+def currentSpan(state: LexerState) : Span =
+  makeSpan(state.pos, state.pos, state.line, state.column)
+
+-- Create span from start position
+def spanFrom(startPos: Int, startLine: Int, startCol: Int)(state: LexerState) : Span =
+  makeSpan(startPos, state.pos, startLine, startCol)
+
+-- Add token to state
+def addToken(tt: TokenType, value: TokenValue, span: Span)(state: LexerState) : LexerState =
+  let newToken = { tokenType: tt, value: value, span: span }
+  in { state with tokens = state.tokens ++ [newToken] }
+
+-- Add simple token (no value)
+def addSimpleToken(tt: TokenType, span: Span)(state: LexerState) : LexerState =
+  addToken(tt, NoValue, span)(state)
+
+-- Add string token
+def addStringToken(tt: TokenType, value: String, span: Span)(state: LexerState) : LexerState =
+  addToken(tt, StringValue(value), span)(state)
+
+-- Check if character is whitespace
+def isWhitespace(c: Char) : Bool =
+  c == ' ' || c == '\t' || c == '\n' || c == '\r'
+
+-- Check if character is digit
+def isDigit(c: Char) : Bool =
+  c >= '0' && c <= '9'
+
+-- Check if character is alpha
+def isAlpha(c: Char) : Bool =
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+
+-- Check if character is alphanumeric
+def isAlnum(c: Char) : Bool =
+  isAlpha(c) || isDigit(c)
+
+-- Skip line comment
+def skipLineComment(state: LexerState) : LexerState =
+  if atEnd(state) || peek(state) == '\n'
+    then state
+    else skipLineComment(snd(advance(state)))
+
+-- Scan number (int or float)
+def scanNumber(startPos: Int, startLine: Int, startCol: Int, firstChar: Char)(state: LexerState) : LexerState =
+  let go digits st =
+        if isDigit(peek(st)) || peek(st) == '_'
+          then
+            let (c, st2) = advance(st)
+            in if c == '_'
+              then go digits st2
+              else go (c :: digits) st2
+          else (digits, st)
+      (digits1, state1) = go [firstChar] state
+  in
+    -- Check for float
+    if peek(state1) == '.' && isDigit(peekOffset(1)(state1))
+      then
+        let (dot, state2) = advance(state1)
+            (digits2, state3) = go (dot :: digits1) state2
+        in
+          -- Check for exponent
+          if peek(state3) == 'e' || peek(state3) == 'E'
+            then
+              let (e, state4) = advance(state3)
+                  (sign, state5) = if peek(state4) == '+' || peek(state4) == '-'
+                    then advance(state4)
+                    else ('\0', state4)
+                  digits3 = if sign == '\0' then e :: digits2 else sign :: e :: digits2
+                  (digits4, state6) = go digits3 state5
+                  str = String.fromList(reverse(digits4))
+                  value = String.toFloat(str)
+                  span = spanFrom(startPos, startLine, startCol)(state6)
+              in addToken(FLOAT, FloatValue(value), span)(state6)
+            else
+              let str = String.fromList(reverse(digits2))
+                  value = String.toFloat(str)
+                  span = spanFrom(startPos, startLine, startCol)(state1)
+              in addToken(FLOAT, FloatValue(value), span)(state1)
+      else
+        let str = String.fromList(reverse(digits1))
+            value = String.toInt(str)
+            span = spanFrom(startPos, startLine, startCol)(state1)
+        in addToken(INT, IntValue(value), span)(state1)
+
+-- Escape character mapping
+def escapeChar(c: Char) : Char =
+  match c with
+    'n' -> '\n'
+    't' -> '\t'
+    'r' -> '\r'
+    '\\' -> '\\'
+    '"' -> '"'
+    '\'' -> '\''
+    _ -> c
+
+-- Scan string literal
+def scanString(startPos: Int, startLine: Int, startCol: Int)(state: LexerState) : LexerResult LexerState =
+  let go chars st =
+        if atEnd(st)
+          then Error { message: "Unterminated string", span: spanFrom(startPos, startLine, startCol)(st) }
+          else if peek(st) == '"'
+            then
+              let (_, st2) = advance(st)
+              in Ok (chars, st2)
+            else if peek(st) == '\\'
+              then
+                let (_, st2) = advance(st)
+                in if atEnd(st2)
+                  then Error { message: "Unterminated escape sequence", span: spanFrom(startPos, startLine, startCol)(st2) }
+                  else
+                    let (c, st3) = advance(st2)
+                    in go (escapeChar(c) :: chars) st3
+              else
+                let (c, st2) = advance(st)
+                in go (c :: chars) st2
+  in match go [] state with
+    Ok (chars, state2) ->
+      let str = String.fromList(reverse(chars))
+          span = spanFrom(startPos, startLine, startCol)(state2)
+      in Ok (addToken(STRING, StringValue(str), span)(state2))
+    Error err -> Error err
+
+-- Scan character literal
+def scanChar(startPos: Int, startLine: Int, startCol: Int)(state: LexerState) : LexerResult LexerState =
+  if atEnd(state)
+    then Error { message: "Unterminated character literal", span: spanFrom(startPos, startLine, startCol)(state) }
+    else if peek(state) == '\''
+      then Error { message: "Empty character literal", span: spanFrom(startPos, startLine, startCol)(state) }
+      else
+        let (charValue, state2) =
+              if peek(state) == '\\'
+                then
+                  let (_, s1) = advance(state)
+                  in if atEnd(s1)
+                    then ('\0', s1)
+                    else
+                      let (c, s2) = advance(s1)
+                      in (escapeChar(c), s2)
+                else advance(state)
+        in if atEnd(state2) || peek(state2) != '\''
+          then Error { message: "Unterminated character literal", span: spanFrom(startPos, startLine, startCol)(state2) }
+          else
+            let (_, state3) = advance(state2)
+                span = spanFrom(startPos, startLine, startCol)(state3)
+            in Ok (addToken(CHAR, CharValue(charValue), span)(state3))
+
+-- Scan identifier or keyword
+def scanIdentifier(startPos: Int, startLine: Int, startCol: Int)(state: LexerState) : LexerState =
+  let go chars st =
+        if isAlnum(peek(st)) || peek(st) == '_'
+          then
+            let (c, st2) = advance(st)
+            in go (c :: chars) st2
+          else (chars, st)
+      (chars, state2) = go [] state
+      text = String.fromList(reverse(chars))
+      span = spanFrom(startPos, startLine, startCol)(state2)
+  in match lookupKeyword(text) with
+    Just tt -> addStringToken(tt, text, span)(state2)
+    Nothing -> addStringToken(IDENT, text, span)(state2)
+
+-- Scan a single token
+def scanToken(state: LexerState) : LexerResult LexerState =
+  let startPos = state.pos
+      startLine = state.line
+      startCol = state.column
+      (char, state1) = advance(state)
+  in
+    -- Whitespace
+    if isWhitespace(char)
+      then Ok state1
+      -- Line comment
+      else if char == '-' && peek(state1) == '-'
+        then Ok (skipLineComment(state1))
+        -- Number
+        else if isDigit(char)
+          then Ok (scanNumber(startPos, startLine, startCol, char)(state1))
+          -- String
+          else if char == '"'
+            then scanString(startPos, startLine, startCol)(state1)
+            -- Character
+            else if char == '\''
+              then scanChar(startPos, startLine, startCol)(state1)
+              -- Identifier or underscore wildcard
+              else if isAlpha(char) || char == '_'
+                then if char == '_' && not(isAlnum(peek(state1)) || peek(state1) == '_')
+                  then Ok (addSimpleToken(UNDERSCORE, spanFrom(startPos, startLine, startCol)(state1))(state1))
+                  else Ok (scanIdentifier(startPos, startLine, startCol)(state1))
+                -- Operators and punctuation
+                else scanOperator(char, startPos, startLine, startCol)(state1)
+
+-- Scan operator or punctuation
+def scanOperator(char: Char, startPos: Int, startLine: Int, startCol: Int)(state: LexerState) : LexerResult LexerState =
+  let span = spanFrom(startPos, startLine, startCol)(state)
+      addTok tt = Ok (addSimpleToken(tt, span)(state))
+  in match char with
+    '+' ->
+      let (matched, state2) = match('+')(state)
+      in if matched
+        then Ok (addSimpleToken(DOUBLE_PLUS, span)(state2))
+        else addTok PLUS
+    '-' ->
+      let (matched, state2) = match('>')(state)
+      in if matched
+        then Ok (addSimpleToken(ARROW, span)(state2))
+        else addTok MINUS
+    '*' -> addTok STAR
+    '/' -> addTok SLASH
+    '%' -> addTok PERCENT
+    ':' ->
+      let (matched, state2) = match(':')(state)
+      in if matched
+        then Ok (addSimpleToken(DOUBLE_COLON, span)(state2))
+        else addTok COLON
+    '=' ->
+      let (matched1, state2) = match('>')(state)
+      in if matched1
+        then Ok (addSimpleToken(FAT_ARROW, span)(state2))
+        else
+          let (matched2, state3) = match('=')(state)
+          in if matched2
+            then Ok (addSimpleToken(EQ, span)(state3))
+            else addTok EQUALS
+    '!' ->
+      let (matched, state2) = match('=')(state)
+      in if matched
+        then Ok (addSimpleToken(NEQ, span)(state2))
+        else addTok BANG
+    '@' -> addTok AT
+    '<' ->
+      let (matched1, state2) = match('=')(state)
+      in if matched1
+        then Ok (addSimpleToken(LE, span)(state2))
+        else
+          let (matched2, state3) = match('-')(state2)
+          in if matched2
+            then Ok (addSimpleToken(LEFT_ARROW, span)(state3))
+            else addTok LT
+    '>' ->
+      let (matched, state2) = match('=')(state)
+      in if matched
+        then Ok (addSimpleToken(GE, span)(state2))
+        else addTok GT
+    '|' ->
+      let (matched, state2) = match('|')(state)
+      in if matched
+        then Ok (addSimpleToken(DOUBLE_PIPE, span)(state2))
+        else addTok PIPE
+    '&' ->
+      let (matched, state2) = match('&')(state)
+      in if matched
+        then Ok (addSimpleToken(DOUBLE_AMP, span)(state2))
+        else addTok AMP
+    '(' -> addTok LPAREN
+    ')' -> addTok RPAREN
+    '[' -> addTok LBRACKET
+    ']' -> addTok RBRACKET
+    '{' -> addTok LBRACE
+    '}' -> addTok RBRACE
+    ',' -> addTok COMMA
+    '.' -> addTok DOT
+    ';' -> addTok SEMICOLON
+    '`' -> addTok BACKTICK
+    _ -> Error { message: "Unexpected character: " ++ String.fromChar(char), span: span }
+
+-- Main tokenization loop
+def tokenizeLoop(state: LexerState) : LexerResult LexerState =
+  if atEnd(state)
+    then Ok state
+    else match scanToken(state) with
+      Ok state2 -> tokenizeLoop(state2)
+      Error err -> Error err
+
+-- Main entry point: tokenize source code
+def tokenize(source: String) : LexerResult (List Token) =
+  let state = initLexer(source)
+  in match tokenizeLoop(state) with
+    Ok state2 ->
+      let eofSpan = currentSpan(state2)
+          eofToken = { tokenType: EOF, value: NoValue, span: eofSpan }
+      in Ok (state2.tokens ++ [eofToken])
+    Error err -> Error err
+
+-- Get tokens or raise error
+def tokenizeOrThrow(source: String) : List Token =
+  match tokenize(source) with
+    Ok tokens -> tokens
+    Error err -> error ("Lexer error: " ++ err.message ++ " at " ++ show(err.span))
