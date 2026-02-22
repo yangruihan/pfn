@@ -1,0 +1,345 @@
+-- Pfn Bootstrap: Tests
+-- Test cases for bootstrap compiler components
+
+module Bootstrap.Tests
+
+import Bootstrap.Token (..)
+import Bootstrap.Lexer (..)
+import Bootstrap.AST (..)
+import Bootstrap.Parser (..)
+import Bootstrap.Types (..)
+import Bootstrap.TypeChecker (..)
+import Bootstrap.Codegen (..)
+
+-- ============ Test Runner ============
+
+type TestResult = {
+  name: String,
+  passed: Bool,
+  message: String
+}
+
+def testResult(name: String, passed: Bool, message: String) : TestResult =
+  { name: name, passed: passed, message: message }
+
+def pass(name: String) : TestResult =
+  testResult(name, True, "OK")
+
+def fail(name: String, message: String) : TestResult =
+  testResult(name, False, message)
+
+-- ============ Token Tests ============
+
+def testKeywords : TestResult =
+  let kw = lookupKeyword("def")
+  in match kw with
+    Just(KW_DEF) -> pass("keywords lookup")
+    _ -> fail("keywords lookup", "Expected KW_DEF for 'def'")
+
+def testTokenCreation : TestResult =
+  let span = makeSpan(0, 3, 1, 1)
+  in let tok = stringToken(IDENT, "foo", span)
+  in if tok.tokenType == IDENT && getTokenString(tok) == "foo" then
+    pass("token creation")
+  else
+    fail("token creation", "Token not created correctly")
+
+-- ============ Lexer Tests ============
+
+def testLexerSimple : TestResult =
+  let tokens = tokenize("def foo = 42")
+  in match tokens with
+    Ok(toks) ->
+      if List.length(toks) >= 4 then
+        match List.getAt(0, toks) with
+          Just(t) ->
+            if t.tokenType == KW_DEF then
+              pass("lexer simple")
+            else
+              fail("lexer simple", "First token should be KW_DEF")
+          Nothing -> fail("lexer simple", "No tokens")
+      else
+        fail("lexer simple", "Expected at least 4 tokens")
+    Err(e) -> fail("lexer simple", "Lexer error")
+
+def testLexerString : TestResult =
+  let tokens = tokenize("\"hello world\"")
+  in match tokens with
+    Ok(toks) ->
+      match List.getAt(0, toks) with
+        Just(t) ->
+          if t.tokenType == STRING && getTokenString(t) == "hello world" then
+            pass("lexer string")
+          else
+            fail("lexer string", "String not lexed correctly")
+        Nothing -> fail("lexer string", "No tokens")
+    Err(e) -> fail("lexer string", "Lexer error")
+
+def testLexerOperators : TestResult =
+  let tokens = tokenize("-> => :: ++ ||")
+  in match tokens with
+    Ok(toks) ->
+      if List.length(toks) >= 5 then
+        pass("lexer operators")
+      else
+        fail("lexer operators", "Not enough operator tokens")
+    Err(e) -> fail("lexer operators", "Lexer error")
+
+-- ============ Parser Tests ============
+
+def testParseInt : TestResult =
+  let tokens = tokenize("42")
+  in match tokens with
+    Ok(toks) ->
+      match parse(toks) with
+        Ok(mod) ->
+          if List.isEmpty(mod.declarations) then
+            pass("parse int - empty module")
+          else
+            fail("parse int", "Expected empty module for lone int")
+        Err(e) -> fail("parse int", errorToString(e))
+    Err(e) -> fail("parse int", "Lexer error")
+
+def testParseDef : TestResult =
+  let tokens = tokenize("def add x y = x + y")
+  in match tokens with
+    Ok(toks) ->
+      match parse(toks) with
+        Ok(mod) ->
+          if List.isEmpty(mod.declarations) then
+            fail("parse def", "Expected one declaration")
+          else
+            match List.getAt(0, mod.declarations) with
+              Just(DefDecl(data)) ->
+                if data.name == "add" && List.length(data.params) == 2 then
+                  pass("parse def")
+                else
+                  fail("parse def", "Function not parsed correctly")
+              _ -> fail("parse def", "Expected DefDecl")
+        Err(e) -> fail("parse def", errorToString(e))
+    Err(e) -> fail("parse def", "Lexer error")
+
+def testParseLambda : TestResult =
+  let tokens = tokenize("fn x => x + 1")
+  in match tokens with
+    Ok(toks) ->
+      match parseExpr(initParser(toks)) with
+        Ok((expr, _)) ->
+          match expr with
+            Lambda(data) ->
+              if List.length(data.params) == 1 then
+                pass("parse lambda")
+              else
+                fail("parse lambda", "Lambda params incorrect")
+            _ -> fail("parse lambda", "Expected Lambda")
+        Err(e) -> fail("parse lambda", errorToString(e))
+    Err(e) -> fail("parse lambda", "Lexer error")
+
+def testParseList : TestResult =
+  let tokens = tokenize("[1, 2, 3]")
+  in match tokens with
+    Ok(toks) ->
+      match parseExpr(initParser(toks)) with
+        Ok((expr, _)) ->
+          match expr with
+            ListLit(elements) ->
+              if List.length(elements) == 3 then
+                pass("parse list")
+              else
+                fail("parse list", "List length incorrect")
+            _ -> fail("parse list", "Expected ListLit")
+        Err(e) -> fail("parse list", errorToString(e))
+    Err(e) -> fail("parse list", "Lexer error")
+
+-- ============ Type Tests ============
+
+def testUnifyInt : TestResult =
+  match unify(TInt, TInt) with
+    Just(_) -> pass("unify int")
+    Nothing -> fail("unify int", "Int should unify with Int")
+
+def testUnifyVar : TestResult =
+  let tv = tVar("a")
+  in match unify(tv, TInt) with
+    Just(s) ->
+      let result = applySubst(s, tv)
+      in match result with
+        TInt -> pass("unify var")
+        _ -> fail("unify var", "Variable should be substituted to Int")
+    Nothing -> fail("unify var", "Var should unify with Int")
+
+def testUnifyFun : TestResult =
+  let t1 = tFun(TInt, tVar("a"))
+  in let t2 = tFun(TInt, TString)
+  in match unify(t1, t2) with
+    Just(s) ->
+      let result = applySubst(s, tVar("a"))
+      in match result with
+        TString -> pass("unify fun")
+        _ -> fail("unify fun", "Type variable should be String")
+    Nothing -> fail("unify fun", "Functions should unify")
+
+def testFreeVars : TestResult =
+  let t = tFun(tVar("a"), tVar("b"))
+  in let fv = freeVars(t)
+  in if Set.member("a", fv) && Set.member("b", fv) then
+    pass("free vars")
+  else
+    fail("free vars", "Should have a and b as free vars")
+
+-- ============ Type Checker Tests ============
+
+def testInferInt : TestResult =
+  let state = initTypeChecker
+  in match infer(state, IntLit(42)) with
+    Ok(result) ->
+      match result.type with
+        TInt -> pass("infer int")
+        _ -> fail("infer int", "Expected Int type")
+    Err(e) -> fail("infer int", e.message)
+
+def testInferString : TestResult =
+  let state = initTypeChecker
+  in match infer(state, StringLit("hello")) with
+    Ok(result) ->
+      match result.type with
+        TString -> pass("infer string")
+        _ -> fail("infer string", "Expected String type")
+    Err(e) -> fail("infer string", e.message)
+
+def testInferLambda : TestResult =
+  let state = initTypeChecker
+  in let expr = Lambda({ params: [param("x")], body: Var("x") })
+  in match infer(state, expr) with
+    Ok(result) ->
+      match result.type with
+        TFun(data) -> pass("infer lambda")
+        _ -> fail("infer lambda", "Expected function type")
+    Err(e) -> fail("infer lambda", e.message)
+
+def testInferList : TestResult =
+  let state = initTypeChecker
+  in let expr = ListLit([IntLit(1), IntLit(2), IntLit(3)])
+  in match infer(state, expr) with
+    Ok(result) ->
+      match result.type with
+        TList(data) ->
+          match data.elem with
+            TInt -> pass("infer list")
+            _ -> fail("infer list", "Expected Int element type")
+        _ -> fail("infer list", "Expected List type")
+    Err(e) -> fail("infer list", e.message)
+
+-- ============ Codegen Tests ============
+
+def testCodegenInt : TestResult =
+  let code = generateExpr(IntLit(42))
+  in if code == "42" then
+    pass("codegen int")
+  else
+    fail("codegen int", "Expected '42', got: " ++ code)
+
+def testCodegenString : TestResult =
+  let code = generateExpr(StringLit("hello"))
+  in if code == "\"hello\"" then
+    pass("codegen string")
+  else
+    fail("codegen string", "Expected '\"hello\"', got: " ++ code)
+
+def testCodegenLambda : TestResult =
+  let expr = Lambda({ params: [param("x")], body: Var("x") })
+  in let code = generateExpr(expr)
+  in if code == "lambda x: x" then
+    pass("codegen lambda")
+  else
+    fail("codegen lambda", "Expected 'lambda x: x', got: " ++ code)
+
+def testCodegenList : TestResult =
+  let expr = ListLit([IntLit(1), IntLit(2), IntLit(3)])
+  in let code = generateExpr(expr)
+  in if code == "[1, 2, 3]" then
+    pass("codegen list")
+  else
+    fail("codegen list", "Expected '[1, 2, 3]', got: " ++ code)
+
+def testCodegenBinOp : TestResult =
+  let expr = BinOp({ left: IntLit(1), op: "+", right: IntLit(2) })
+  in let code = generateExpr(expr)
+  in if code == "1 + 2" then
+    pass("codegen binop")
+  else
+    fail("codegen binop", "Expected '1 + 2', got: " ++ code)
+
+def testCodegenIf : TestResult =
+  let expr = If({
+    cond: Var("x"),
+    thenBranch: IntLit(1),
+    elseBranch: IntLit(0)
+  })
+  in let code = generateExpr(expr)
+  in if code == "1 if x else 0" then
+    pass("codegen if")
+  else
+    fail("codegen if", "Expected '1 if x else 0', got: " ++ code)
+
+-- ============ Run All Tests ============
+
+def runTests : List TestResult =
+  [
+    -- Token tests
+    testKeywords,
+    testTokenCreation,
+    
+    -- Lexer tests
+    testLexerSimple,
+    testLexerString,
+    testLexerOperators,
+    
+    -- Parser tests
+    testParseInt,
+    testParseDef,
+    testParseLambda,
+    testParseList,
+    
+    -- Type tests
+    testUnifyInt,
+    testUnifyVar,
+    testUnifyFun,
+    testFreeVars,
+    
+    -- Type checker tests
+    testInferInt,
+    testInferString,
+    testInferLambda,
+    testInferList,
+    
+    -- Codegen tests
+    testCodegenInt,
+    testCodegenString,
+    testCodegenLambda,
+    testCodegenList,
+    testCodegenBinOp,
+    testCodegenIf
+  ]
+
+-- Count passed tests
+def countPassed(results: List TestResult) : Int =
+  List.foldl(\acc r -> if r.passed then acc + 1 else acc, 0, results)
+
+-- Print test results
+def printResults(results: List TestResult) : String =
+  let passed = countPassed(results)
+  in let total = List.length(results)
+  in let header = "Bootstrap Tests: " ++ toString(passed) ++ "/" ++ toString(total) ++ " passed\n"
+  in let details = String.join("\n", List.map(formatResult, results))
+  in header ++ details
+
+def formatResult(r: TestResult) : String =
+  if r.passed then
+    "  ✓ " ++ r.name
+  else
+    "  ✗ " ++ r.name ++ ": " ++ r.message
+
+-- Main entry point
+def main : String =
+  printResults(runTests)
