@@ -97,6 +97,7 @@ class ConsPattern(Pattern):
 @dataclass
 class ListPattern(Pattern):
     elements: list[Pattern]
+    rest: Pattern | None = None  # For spread pattern: [a, b, ...rest]
 
 
 @dataclass
@@ -193,6 +194,13 @@ class If(Expr):
 @dataclass
 class Let(Expr):
     name: str
+    value: Expr
+    body: Expr
+
+
+@dataclass
+class LetPattern(Expr):
+    pattern: Pattern
     value: Expr
     body: Expr
 

@@ -65,6 +65,8 @@ class TokenType(Enum):
     DOUBLE_AMP = auto()
     LEFT_ARROW = auto()
     DOUBLE_PLUS = auto()
+    DOUBLE_DOT = auto()
+    TRIPLE_DOT = auto()
     BANG = auto()
     AT = auto()
 
@@ -81,6 +83,7 @@ class TokenType(Enum):
     UNDERSCORE = auto()
     SEMICOLON = auto()
     BACKTICK = auto()
+    BACKSLASH = auto()  # For Haskell-style lambda: \x -> ...
 
     # Special
     NEWLINE = auto()

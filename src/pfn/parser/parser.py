@@ -38,11 +38,22 @@ class Parser:
 
     def parse(self) -> ast.Module:
         declarations = []
+        module_name = None
+
+        # Handle optional module declaration at the start
+        if self._match(TokenType.KW_MODULE):
+            name_token = self._expect(TokenType.IDENT, "Expected module name")
+            module_name = str(name_token.value)
+            # Handle dotted module names (e.g., Bootstrap.Token)
+            while self._match(TokenType.DOT):
+                part_token = self._expect(TokenType.IDENT, "Expected module name part")
+                module_name = module_name + "." + str(part_token.value)
+
         while not self._check(TokenType.EOF):
             decl = self._parse_declaration()
             if decl is not None:
                 declarations.append(decl)
-        return ast.Module(declarations=declarations)
+        return ast.Module(name=module_name, declarations=declarations)
 
     def parse_expr(self) -> ast.Expr:
         return self._parse_expr()
@@ -133,19 +144,57 @@ class Parser:
                             )
                             self._expect(TokenType.RPAREN, "Expected ')'")
 
-        name_token = self._expect(TokenType.IDENT, "Expected function name")
+        # Accept keywords as function names (e.g., `def match(...)`)
+        name_token = self._match(
+            TokenType.IDENT,
+            TokenType.KW_MODULE,
+            TokenType.KW_TYPE,
+            TokenType.KW_DATA,
+            TokenType.KW_DEF,
+            TokenType.KW_LET,
+            TokenType.KW_IN,
+            TokenType.KW_IF,
+            TokenType.KW_THEN,
+            TokenType.KW_ELSE,
+            TokenType.KW_MATCH,
+            TokenType.KW_WITH,
+            TokenType.KW_INTERFACE,
+            TokenType.KW_IMPL,
+            TokenType.KW_IMPORT,
+            TokenType.KW_EXPORT,
+            TokenType.KW_AS,
+            TokenType.KW_EFFECT,
+            TokenType.KW_HANDLER,
+            TokenType.KW_HANDLE,
+            TokenType.KW_DO,
+            TokenType.KW_FORALL,
+            TokenType.KW_EXISTS,
+            TokenType.KW_FAMILY,
+            TokenType.KW_WHERE,
+            TokenType.KW_FN,
+            TokenType.KW_GADT,
+        )
+        if not name_token:
+            name_token = self._expect(TokenType.IDENT, "Expected function name")
         name = name_token.value
 
         params = []
-        if self._match(TokenType.LPAREN):
-            if not self._check(TokenType.RPAREN):
-                params.append(self._parse_param())
-                while self._match(TokenType.COMMA):
+        while True:
+            if self._match(TokenType.LPAREN):
+                if not self._check(TokenType.RPAREN):
                     params.append(self._parse_param())
-            self._expect(TokenType.RPAREN, "Expected ')' after parameters")
+                    while self._match(TokenType.COMMA):
+                        params.append(self._parse_param())
+                self._expect(TokenType.RPAREN, "Expected ')' after parameters")
+            elif self._check(TokenType.IDENT) or self._check(TokenType.UNDERSCORE):
+                params.append(self._parse_param())
+            else:
+                break
 
         return_type = None
-        if self._match(TokenType.ARROW):
+        if self._match(TokenType.COLON):
+            return_type = self._parse_type_ref()
+        elif self._match(TokenType.ARROW):
             return_type = self._parse_type_ref()
 
         self._expect(TokenType.EQUALS, "Expected '=' after function signature")
@@ -161,8 +210,43 @@ class Parser:
         )
 
     def _parse_param(self) -> ast.Param:
-        name_token = self._expect(TokenType.IDENT, "Expected parameter name")
-        name = name_token.value
+        # Accept IDENT, UNDERSCORE, or keywords as parameter name
+        if self._check(TokenType.UNDERSCORE):
+            name_token = self._match(TokenType.UNDERSCORE)
+            name = "_"
+        else:
+            name_token = self._match(
+                TokenType.IDENT,
+                TokenType.KW_MODULE,
+                TokenType.KW_TYPE,
+                TokenType.KW_DATA,
+                TokenType.KW_DEF,
+                TokenType.KW_LET,
+                TokenType.KW_IN,
+                TokenType.KW_IF,
+                TokenType.KW_THEN,
+                TokenType.KW_ELSE,
+                TokenType.KW_MATCH,
+                TokenType.KW_WITH,
+                TokenType.KW_INTERFACE,
+                TokenType.KW_IMPL,
+                TokenType.KW_IMPORT,
+                TokenType.KW_EXPORT,
+                TokenType.KW_AS,
+                TokenType.KW_EFFECT,
+                TokenType.KW_HANDLER,
+                TokenType.KW_HANDLE,
+                TokenType.KW_DO,
+                TokenType.KW_FORALL,
+                TokenType.KW_EXISTS,
+                TokenType.KW_FAMILY,
+                TokenType.KW_WHERE,
+                TokenType.KW_FN,
+                TokenType.KW_GADT,
+            )
+            if not name_token:
+                name_token = self._expect(TokenType.IDENT, "Expected parameter name")
+            name = name_token.value
         type_annotation = None
         if self._match(TokenType.COLON):
             type_annotation = self._parse_type_ref()
@@ -197,9 +281,9 @@ class Parser:
             ctor_name_token = self._expect(TokenType.IDENT, "Expected constructor name")
             ctor_name = ctor_name_token.value
             ctor_fields = []
-            while self._check(TokenType.IDENT) and not self._check(
-                TokenType.PIPE, TokenType.EOF
-            ):
+            while (
+                self._check(TokenType.IDENT) or self._check(TokenType.LPAREN)
+            ) and not self._check(TokenType.PIPE, TokenType.EOF):
                 field_type = self._parse_type_atom()
                 ctor_fields.append(field_type)
             constructors.append(ast.Constructor(name=ctor_name, fields=ctor_fields))
@@ -266,6 +350,56 @@ class Parser:
             alias_token = self._expect(TokenType.IDENT, "Expected alias")
             alias = str(alias_token.value)
 
+        if self._match(TokenType.LPAREN):
+            exposing = []
+            if self._match(TokenType.DOUBLE_DOT):
+                exposing = [".."]
+            elif not self._check(TokenType.RPAREN):
+                name_token = self._expect(TokenType.IDENT, "Expected import name")
+                name = str(name_token.value)
+                if self._match(TokenType.LPAREN):
+                    if self._match(TokenType.DOUBLE_DOT):
+                        name = f"{name}(..)"
+                    else:
+                        inner = []
+                        inner_token = self._expect(
+                            TokenType.IDENT, "Expected constructor name"
+                        )
+                        inner.append(str(inner_token.value))
+                        while self._match(TokenType.COMMA):
+                            inner_token = self._expect(
+                                TokenType.IDENT, "Expected constructor name"
+                            )
+                            inner.append(str(inner_token.value))
+                        name = f"{name}({', '.join(inner)})"
+                    self._expect(
+                        TokenType.RPAREN, "Expected ')' after constructor list"
+                    )
+                exposing.append(name)
+                while self._match(TokenType.COMMA):
+                    name_token = self._expect(TokenType.IDENT, "Expected import name")
+                    name = str(name_token.value)
+                    if self._match(TokenType.LPAREN):
+                        if self._match(TokenType.DOUBLE_DOT):
+                            name = f"{name}(..)"
+                        else:
+                            inner = []
+                            inner_token = self._expect(
+                                TokenType.IDENT, "Expected constructor name"
+                            )
+                            inner.append(str(inner_token.value))
+                            while self._match(TokenType.COMMA):
+                                inner_token = self._expect(
+                                    TokenType.IDENT, "Expected constructor name"
+                                )
+                                inner.append(str(inner_token.value))
+                            name = f"{name}({', '.join(inner)})"
+                        self._expect(
+                            TokenType.RPAREN, "Expected ')' after constructor list"
+                        )
+                    exposing.append(name)
+            self._expect(TokenType.RPAREN, "Expected ')' after import list")
+
         return ast.ImportDecl(
             module=module_name, alias=alias, exposing=exposing, is_python=is_python
         )
@@ -283,7 +417,7 @@ class Parser:
     def _parse_type_app(self) -> ast.TypeRef:
         base = self._parse_type_atom()
         args = []
-        while self._check(TokenType.IDENT):
+        while self._check(TokenType.IDENT) or self._check(TokenType.LPAREN):
             args.append(self._parse_type_atom())
         if args:
             if isinstance(base, ast.SimpleTypeRef):
@@ -292,6 +426,8 @@ class Parser:
 
     def _parse_type_atom(self) -> ast.TypeRef:
         if self._match(TokenType.LPAREN):
+            if self._match(TokenType.RPAREN):
+                return ast.TupleTypeRef(elements=[])
             inner = self._parse_type_ref()
             if self._match(TokenType.COMMA):
                 elements = [inner]
@@ -313,7 +449,39 @@ class Parser:
             fields = []
             if not self._check(TokenType.RBRACE):
                 while True:
-                    field_name = self._expect(TokenType.IDENT, "Expected field name")
+                    field_name = self._match(
+                        TokenType.IDENT,
+                        TokenType.KW_MODULE,
+                        TokenType.KW_TYPE,
+                        TokenType.KW_DATA,
+                        TokenType.KW_DEF,
+                        TokenType.KW_LET,
+                        TokenType.KW_IN,
+                        TokenType.KW_IF,
+                        TokenType.KW_THEN,
+                        TokenType.KW_ELSE,
+                        TokenType.KW_MATCH,
+                        TokenType.KW_WITH,
+                        TokenType.KW_INTERFACE,
+                        TokenType.KW_IMPL,
+                        TokenType.KW_IMPORT,
+                        TokenType.KW_EXPORT,
+                        TokenType.KW_AS,
+                        TokenType.KW_EFFECT,
+                        TokenType.KW_HANDLER,
+                        TokenType.KW_HANDLE,
+                        TokenType.KW_DO,
+                        TokenType.KW_FORALL,
+                        TokenType.KW_EXISTS,
+                        TokenType.KW_FAMILY,
+                        TokenType.KW_WHERE,
+                        TokenType.KW_FN,
+                        TokenType.KW_GADT,
+                    )
+                    if not field_name:
+                        field_name = self._expect(
+                            TokenType.IDENT, "Expected field name"
+                        )
                     self._expect(TokenType.COLON, "Expected ':' after field name")
                     field_type = self._parse_type_ref()
                     fields.append((field_name.value, field_type))
@@ -330,26 +498,71 @@ class Parser:
 
     def _parse_let(self) -> ast.Expr:
         if self._match(TokenType.KW_LET):
-            name_token = self._expect(TokenType.IDENT, "Expected variable name")
-            name = name_token.value
+            bindings = []
+            while True:
+                if self._check(TokenType.LPAREN):
+                    pattern = self._parse_pattern()
+                    self._expect(TokenType.EQUALS, "Expected '=' after let pattern")
+                    value = self._parse_expr()
+                    bindings.append(
+                        ast.LetPattern(pattern=pattern, value=value, body=None)
+                    )
+                elif self._match(TokenType.UNDERSCORE):
+                    name = "_"
+                    params = []
+                    while self._check(TokenType.IDENT):
+                        params.append(self._parse_param())
 
-            params = []
-            while self._check(TokenType.IDENT, TokenType.LPAREN):
-                if self._match(TokenType.LPAREN):
-                    params.append(self._parse_param())
-                    self._expect(TokenType.RPAREN, "Expected ')'")
+                    self._expect(TokenType.EQUALS, "Expected '=' after let binding")
+                    value = self._parse_expr()
+
+                    if params:
+                        bindings.append(
+                            ast.LetFunc(
+                                name=name, params=params, value=value, body=None
+                            )
+                        )
+                    else:
+                        bindings.append(ast.Let(name=name, value=value, body=None))
                 else:
-                    params.append(self._parse_param())
+                    name_token = self._expect(TokenType.IDENT, "Expected variable name")
+                    name = name_token.value
 
-            self._expect(TokenType.EQUALS, "Expected '=' after let binding")
-            value = self._parse_expr()
+                    params = []
+                    while self._check(TokenType.IDENT):
+                        params.append(self._parse_param())
+
+                    self._expect(TokenType.EQUALS, "Expected '=' after let binding")
+                    value = self._parse_expr()
+
+                    if params:
+                        bindings.append(
+                            ast.LetFunc(
+                                name=name, params=params, value=value, body=None
+                            )
+                        )
+                    else:
+                        bindings.append(ast.Let(name=name, value=value, body=None))
+
+                if self._match(TokenType.KW_LET):
+                    continue
+                if (
+                    self._check(TokenType.IDENT)
+                    and self._peek().type == TokenType.EQUALS
+                ):
+                    continue
+                if self._check(TokenType.LPAREN):
+                    continue
+                break
 
             self._match(TokenType.KW_IN)
             body = self._parse_expr()
 
-            if params:
-                return ast.LetFunc(name=name, params=params, value=value, body=body)
-            return ast.Let(name=name, value=value, body=body)
+            for binding in reversed(bindings):
+                binding.body = body
+                body = binding
+
+            return body
 
         if self._match(TokenType.KW_DO):
             return self._parse_do()
@@ -387,16 +600,170 @@ class Parser:
             scrutinee = self._parse_expr()
             self._expect(TokenType.KW_WITH, "Expected 'with'")
             cases = []
-            while self._match(TokenType.PIPE):
+            if self._match(TokenType.PIPE):
+                pass
+            while True:
                 pattern = self._parse_pattern()
                 guard = None
                 if self._match(TokenType.KW_IF):
                     guard = self._parse_expr()
                 self._expect(TokenType.ARROW, "Expected '->'")
-                body = self._parse_expr()
+                body = self._parse_expr_stop_on_pattern()
                 cases.append(ast.MatchCase(pattern=pattern, guard=guard, body=body))
+                if self._match(TokenType.PIPE):
+                    continue
+                if self._is_pattern_start() and self._peek().type == TokenType.ARROW:
+                    continue
+                if self._is_pattern_start():
+                    saved_pos = self.pos
+                    try:
+                        self._parse_pattern()
+                        if self._check(TokenType.ARROW):
+                            self.pos = saved_pos
+                            continue
+                    except:
+                        pass
+                    self.pos = saved_pos
+                break
             return ast.Match(scrutinee=scrutinee, cases=cases)
         return self._parse_or()
+
+    def _parse_expr_stop_on_pattern(self) -> ast.Expr:
+        return self._parse_let_stop_on_pattern()
+
+    def _parse_let_stop_on_pattern(self) -> ast.Expr:
+        if self._match(TokenType.KW_LET):
+            bindings = []
+            while True:
+                if self._check(TokenType.LPAREN):
+                    pattern = self._parse_pattern()
+                    self._expect(TokenType.EQUALS, "Expected '=' after let pattern")
+                    value = self._parse_expr_stop_on_pattern()
+                    bindings.append(
+                        ast.LetPattern(pattern=pattern, value=value, body=None)
+                    )
+                elif self._match(TokenType.UNDERSCORE):
+                    name = "_"
+                    params = []
+                    while self._check(TokenType.IDENT):
+                        params.append(self._parse_param())
+
+                    self._expect(TokenType.EQUALS, "Expected '=' after let binding")
+                    value = self._parse_expr_stop_on_pattern()
+
+                    if params:
+                        bindings.append(
+                            ast.LetFunc(
+                                name=name, params=params, value=value, body=None
+                            )
+                        )
+                    else:
+                        bindings.append(ast.Let(name=name, value=value, body=None))
+                else:
+                    name_token = self._expect(TokenType.IDENT, "Expected variable name")
+                    name = name_token.value
+
+                    params = []
+                    while self._check(TokenType.IDENT):
+                        params.append(self._parse_param())
+
+                    self._expect(TokenType.EQUALS, "Expected '=' after let binding")
+                    value = self._parse_expr_stop_on_pattern()
+
+                    if params:
+                        bindings.append(
+                            ast.LetFunc(
+                                name=name, params=params, value=value, body=None
+                            )
+                        )
+                    else:
+                        bindings.append(ast.Let(name=name, value=value, body=None))
+
+                if self._match(TokenType.KW_LET):
+                    continue
+                if (
+                    self._check(TokenType.IDENT)
+                    and self._peek().type == TokenType.EQUALS
+                ):
+                    continue
+                if self._check(TokenType.LPAREN):
+                    continue
+                break
+
+            self._match(TokenType.KW_IN)
+            body = self._parse_expr_stop_on_pattern()
+
+            for binding in reversed(bindings):
+                binding.body = body
+                body = binding
+
+            return body
+
+        if self._match(TokenType.KW_DO):
+            return self._parse_do()
+
+        return self._parse_if_stop_on_pattern()
+
+    def _parse_if_stop_on_pattern(self) -> ast.Expr:
+        if self._match(TokenType.KW_IF):
+            cond = self._parse_expr_stop_on_pattern()
+            self._expect(TokenType.KW_THEN, "Expected 'then'")
+            then_branch = self._parse_expr_stop_on_pattern()
+            self._expect(TokenType.KW_ELSE, "Expected 'else'")
+            else_branch = self._parse_expr_stop_on_pattern()
+            return ast.If(cond=cond, then_branch=then_branch, else_branch=else_branch)
+        if (
+            self._check(TokenType.KW_MATCH)
+            and not self._peek().type == TokenType.LPAREN
+        ):
+            self._match(TokenType.KW_MATCH)
+            return self._parse_match_stop_on_pattern()
+        return self._parse_or()
+
+    def _parse_match_stop_on_pattern(self) -> ast.Expr:
+        scrutinee = self._parse_expr_stop_on_pattern()
+        self._expect(TokenType.KW_WITH, "Expected 'with'")
+        cases = []
+        if self._match(TokenType.PIPE):
+            pass
+        while True:
+            pattern = self._parse_pattern()
+            guard = None
+            if self._match(TokenType.KW_IF):
+                guard = self._parse_expr_stop_on_pattern()
+            self._expect(TokenType.ARROW, "Expected '->'")
+            body = self._parse_expr_stop_on_pattern()
+            cases.append(ast.MatchCase(pattern=pattern, guard=guard, body=body))
+            if self._match(TokenType.PIPE):
+                continue
+            if self._is_pattern_start() and self._peek().type == TokenType.ARROW:
+                continue
+            if self._is_pattern_start():
+                saved_pos = self.pos
+                try:
+                    self._parse_pattern()
+                    if self._check(TokenType.ARROW):
+                        self.pos = saved_pos
+                        continue
+                except:
+                    pass
+                self.pos = saved_pos
+            break
+        return ast.Match(scrutinee=scrutinee, cases=cases)
+
+    def _is_pattern_start(self) -> bool:
+        return self._check(
+            TokenType.INT,
+            TokenType.FLOAT,
+            TokenType.STRING,
+            TokenType.CHAR,
+            TokenType.TRUE,
+            TokenType.FALSE,
+            TokenType.UNDERSCORE,
+            TokenType.LBRACKET,
+            TokenType.LPAREN,
+            TokenType.IDENT,
+        )
 
     def _parse_pattern(self) -> ast.Pattern:
         return self._parse_cons_pattern()
@@ -426,8 +793,17 @@ class Parser:
         if self._match(TokenType.LBRACKET):
             if self._match(TokenType.RBRACKET):
                 return ast.ListPattern(elements=[])
-            elements = [self._parse_pattern()]
+            first = self._parse_pattern()
+            if self._match(TokenType.PIPE):
+                tail = self._parse_pattern()
+                self._expect(TokenType.RBRACKET, "Expected ']'")
+                return ast.ConsPattern(head=first, tail=tail)
+            elements = [first]
             while self._match(TokenType.COMMA):
+                if self._match(TokenType.TRIPLE_DOT):
+                    rest = self._parse_pattern()
+                    self._expect(TokenType.RBRACKET, "Expected ']'")
+                    return ast.ListPattern(elements=elements, rest=rest)
                 elements.append(self._parse_pattern())
             self._expect(TokenType.RBRACKET, "Expected ']'")
             return ast.ListPattern(elements=elements)
@@ -445,8 +821,61 @@ class Parser:
                 return ast.TuplePattern(elements=elements)
             self._expect(TokenType.RPAREN, "Expected ')'")
             return first
-        if self._match(TokenType.IDENT):
+        if self._match(
+            TokenType.IDENT,
+            TokenType.KW_DATA,
+            TokenType.KW_TYPE,
+            TokenType.KW_DEF,
+            TokenType.KW_LET,
+            TokenType.KW_IN,
+            TokenType.KW_IF,
+            TokenType.KW_THEN,
+            TokenType.KW_ELSE,
+            TokenType.KW_MATCH,
+            TokenType.KW_WITH,
+            TokenType.KW_INTERFACE,
+            TokenType.KW_IMPL,
+            TokenType.KW_IMPORT,
+            TokenType.KW_EXPORT,
+            TokenType.KW_MODULE,
+            TokenType.KW_AS,
+            TokenType.KW_EFFECT,
+            TokenType.KW_HANDLER,
+            TokenType.KW_HANDLE,
+            TokenType.KW_DO,
+            TokenType.KW_FORALL,
+            TokenType.KW_EXISTS,
+            TokenType.KW_FAMILY,
+            TokenType.KW_WHERE,
+            TokenType.KW_FN,
+            TokenType.KW_GADT,
+        ):
             name = self.tokens[self.pos - 1].value
+            if self._check(TokenType.LPAREN):
+                args = []
+                self.pos += 1
+                if not self._check(TokenType.RPAREN):
+                    args.append(self._parse_pattern())
+                    while self._match(TokenType.COMMA):
+                        args.append(self._parse_pattern())
+                self._expect(TokenType.RPAREN, "Expected ')'")
+                return ast.ConstructorPattern(name=name, args=args)
+            name_str = str(name)
+            if name_str and name_str[0].isupper():
+                args = []
+                while self._is_pattern_start():
+                    if (
+                        self._check(TokenType.IDENT)
+                        and self._peek().type == TokenType.EQUALS
+                    ):
+                        break
+                    if (
+                        self._check(TokenType.IDENT)
+                        and self._peek().type == TokenType.DOT
+                    ):
+                        break
+                    args.append(self._parse_atom_pattern())
+                return ast.ConstructorPattern(name=name, args=args)
             return ast.VarPattern(name=name)
 
         raise ParseError(
@@ -524,17 +953,138 @@ class Parser:
 
         while True:
             if self._match(TokenType.LPAREN):
-                args = []
-                if not self._check(TokenType.RPAREN):
-                    args.append(self._parse_expr())
-                    while self._match(TokenType.COMMA):
-                        args.append(self._parse_expr())
-                self._expect(TokenType.RPAREN, "Expected ')'")
-                for arg in args:
-                    expr = ast.App(func=expr, args=[arg])
+                if self._check(TokenType.RPAREN):
+                    self._expect(TokenType.RPAREN, "Expected ')'")
+                    expr = ast.App(func=expr, args=[])
+                    expr = self._parse_access_from(expr)
+                    continue
+                saved_pos = self.pos
+                try:
+                    first = self._parse_expr()
+                    if self._match(TokenType.COMMA):
+                        elements = [first]
+                        while not self._check(TokenType.RPAREN):
+                            elements.append(self._parse_expr())
+                            if not self._match(TokenType.COMMA):
+                                break
+                        self._expect(TokenType.RPAREN, "Expected ')'")
+                        if self._check(TokenType.EQUALS):
+                            self.pos = saved_pos - 1
+                            break
+                        for arg in elements:
+                            expr = ast.App(func=expr, args=[arg])
+                        expr = self._parse_access_from(expr)
+                    else:
+                        self._expect(TokenType.RPAREN, "Expected ')'")
+                        if self._check(TokenType.EQUALS):
+                            self.pos = saved_pos - 1
+                            break
+                        expr = ast.App(func=expr, args=[first])
+                        expr = self._parse_access_from(expr)
+                except ParseError:
+                    self.pos = saved_pos
+                    break
+            elif self._check(TokenType.IDENT) and self._peek().type == TokenType.EQUALS:
+                break
+            elif self._is_pattern_start() and self._peek().type == TokenType.ARROW:
+                break
+            elif self._check(TokenType.IDENT):
+                name = self._current().value
+                if name and str(name)[0].isupper():
+                    if self._peek().type == TokenType.LPAREN:
+                        saved_pos = self.pos
+                        self.pos += 2  # Skip IDENT and LPAREN
+                        depth = 1
+                        while depth > 0 and not self._check(TokenType.EOF):
+                            if self._match(TokenType.LPAREN):
+                                depth += 1
+                            elif self._match(TokenType.RPAREN):
+                                depth -= 1
+                            else:
+                                self.pos += 1
+                        is_arrow = self._check(TokenType.ARROW)
+                        self.pos = saved_pos
+                        if is_arrow:
+                            break
+                    elif self._peek().type == TokenType.ARROW:
+                        break
+                arg = self._parse_atom()
+                expr = ast.App(func=expr, args=[arg])
+            elif self._check(
+                TokenType.INT,
+                TokenType.FLOAT,
+                TokenType.STRING,
+                TokenType.CHAR,
+                TokenType.TRUE,
+                TokenType.FALSE,
+                TokenType.LBRACE,
+                TokenType.BACKSLASH,
+            ):
+                arg = self._parse_atom()
+                expr = ast.App(func=expr, args=[arg])
+            elif self._check(TokenType.LBRACKET):
+                saved_pos = self.pos
+                self.pos += 1
+                has_pipe = False
+                depth = 1
+                while depth > 0 and not self._check(TokenType.EOF):
+                    if self._match(TokenType.LBRACKET):
+                        depth += 1
+                    elif self._match(TokenType.RBRACKET):
+                        depth -= 1
+                    elif self._match(TokenType.PIPE) and depth == 1:
+                        has_pipe = True
+                    else:
+                        self.pos += 1
+                is_arrow = self._check(TokenType.ARROW)
+                self.pos = saved_pos
+                if has_pipe or is_arrow:
+                    break
+                arg = self._parse_atom()
+                expr = ast.App(func=expr, args=[arg])
             else:
                 break
 
+        return expr
+
+    def _parse_access_from(self, expr: ast.Expr) -> ast.Expr:
+        while True:
+            if self._match(TokenType.DOT):
+                if self._match(
+                    TokenType.IDENT,
+                    TokenType.KW_DATA,
+                    TokenType.KW_TYPE,
+                    TokenType.KW_DEF,
+                    TokenType.KW_LET,
+                    TokenType.KW_IN,
+                    TokenType.KW_IF,
+                    TokenType.KW_THEN,
+                    TokenType.KW_ELSE,
+                    TokenType.KW_MATCH,
+                    TokenType.KW_WITH,
+                    TokenType.KW_INTERFACE,
+                    TokenType.KW_IMPL,
+                    TokenType.KW_IMPORT,
+                    TokenType.KW_EXPORT,
+                    TokenType.KW_MODULE,
+                    TokenType.KW_AS,
+                    TokenType.KW_EFFECT,
+                    TokenType.KW_HANDLER,
+                    TokenType.KW_HANDLE,
+                    TokenType.KW_DO,
+                    TokenType.KW_FORALL,
+                    TokenType.KW_EXISTS,
+                    TokenType.KW_FAMILY,
+                    TokenType.KW_WHERE,
+                    TokenType.KW_FN,
+                    TokenType.KW_GADT,
+                ):
+                    field_name = self.tokens[self.pos - 1].value
+                    expr = ast.FieldAccess(expr=expr, field=field_name)
+                else:
+                    raise ParseError("Expected field name", self._current())
+            else:
+                break
         return expr
 
     def _parse_access(self) -> ast.Expr:
@@ -542,12 +1092,39 @@ class Parser:
 
         while True:
             if self._match(TokenType.DOT):
-                field_token = self._expect(TokenType.IDENT, "Expected field name")
-                expr = ast.FieldAccess(expr=expr, field=field_token.value)
-            elif self._match(TokenType.LBRACKET):
-                index = self._parse_expr()
-                self._expect(TokenType.RBRACKET, "Expected ']'")
-                expr = ast.IndexAccess(expr=expr, index=index)
+                if self._match(
+                    TokenType.IDENT,
+                    TokenType.KW_DATA,
+                    TokenType.KW_TYPE,
+                    TokenType.KW_DEF,
+                    TokenType.KW_LET,
+                    TokenType.KW_IN,
+                    TokenType.KW_IF,
+                    TokenType.KW_THEN,
+                    TokenType.KW_ELSE,
+                    TokenType.KW_MATCH,
+                    TokenType.KW_WITH,
+                    TokenType.KW_INTERFACE,
+                    TokenType.KW_IMPL,
+                    TokenType.KW_IMPORT,
+                    TokenType.KW_EXPORT,
+                    TokenType.KW_MODULE,
+                    TokenType.KW_AS,
+                    TokenType.KW_EFFECT,
+                    TokenType.KW_HANDLER,
+                    TokenType.KW_HANDLE,
+                    TokenType.KW_DO,
+                    TokenType.KW_FORALL,
+                    TokenType.KW_EXISTS,
+                    TokenType.KW_FAMILY,
+                    TokenType.KW_WHERE,
+                    TokenType.KW_FN,
+                    TokenType.KW_GADT,
+                ):
+                    field_name = self.tokens[self.pos - 1].value
+                    expr = ast.FieldAccess(expr=expr, field=field_name)
+                else:
+                    raise ParseError("Expected field name", self._current())
             else:
                 break
 
@@ -574,6 +1151,9 @@ class Parser:
 
         if self._match(TokenType.KW_FN):
             return self._parse_lambda()
+
+        if self._match(TokenType.BACKSLASH):
+            return self._parse_backslash_lambda()
 
         if self._match(TokenType.LPAREN):
             if self._match(TokenType.RPAREN):
@@ -606,7 +1186,35 @@ class Parser:
         if self._match(TokenType.LBRACE):
             return self._parse_record()
 
-        if self._match(TokenType.IDENT):
+        if self._match(
+            TokenType.IDENT,
+            TokenType.KW_MATCH,
+            TokenType.KW_DATA,
+            TokenType.KW_TYPE,
+            TokenType.KW_DEF,
+            TokenType.KW_LET,
+            TokenType.KW_IN,
+            TokenType.KW_IF,
+            TokenType.KW_THEN,
+            TokenType.KW_ELSE,
+            TokenType.KW_WITH,
+            TokenType.KW_INTERFACE,
+            TokenType.KW_IMPL,
+            TokenType.KW_IMPORT,
+            TokenType.KW_EXPORT,
+            TokenType.KW_MODULE,
+            TokenType.KW_AS,
+            TokenType.KW_EFFECT,
+            TokenType.KW_HANDLER,
+            TokenType.KW_HANDLE,
+            TokenType.KW_DO,
+            TokenType.KW_FORALL,
+            TokenType.KW_EXISTS,
+            TokenType.KW_FAMILY,
+            TokenType.KW_WHERE,
+            TokenType.KW_FN,
+            TokenType.KW_GADT,
+        ):
             name = self.tokens[self.pos - 1].value
             return ast.Var(name=name)
 
@@ -637,28 +1245,118 @@ class Parser:
 
         return ast.Lambda(params=params, body=body)
 
+    def _parse_backslash_lambda(self) -> ast.Lambda:
+        params = []
+
+        while self._check(TokenType.IDENT) or self._check(TokenType.UNDERSCORE):
+            params.append(self._parse_param())
+
+        self._expect(TokenType.ARROW, "Expected '->' after lambda parameters")
+        body = self._parse_expr()
+
+        return ast.Lambda(params=params, body=body)
+
     def _parse_record(self) -> ast.Expr:
-        if self._check(TokenType.IDENT) and self._peek().type == TokenType.KW_WITH:
-            base_name = self._expect(TokenType.IDENT, "Expected record name")
-            self._expect(TokenType.KW_WITH, "Expected 'with'")
-            updates = []
-            while not self._check(TokenType.RBRACE):
-                field_name = self._expect(TokenType.IDENT, "Expected field name")
-                self._expect(TokenType.EQUALS, "Expected '='")
-                value = self._parse_expr()
-                updates.append(ast.RecordField(name=field_name.value, value=value))
-                if not self._match(TokenType.COMMA):
-                    break
-            self._expect(TokenType.RBRACE, "Expected '}'")
-            return ast.RecordUpdate(
-                record=ast.Var(name=base_name.value),
-                updates=updates,
+        if self._check(TokenType.IDENT):
+            base = ast.Var(
+                name=self._expect(TokenType.IDENT, "Expected record name").value
             )
+            while self._match(TokenType.DOT):
+                field = self._expect(TokenType.IDENT, "Expected field name")
+                base = ast.FieldAccess(expr=base, field=field.value)
+            if self._match(TokenType.KW_WITH):
+                updates = []
+                while not self._check(TokenType.RBRACE):
+                    field_name = self._expect(TokenType.IDENT, "Expected field name")
+                    self._expect(TokenType.EQUALS, "Expected '='")
+                    value = self._parse_expr()
+                    updates.append(ast.RecordField(name=field_name.value, value=value))
+                    if not self._match(TokenType.COMMA):
+                        break
+                self._expect(TokenType.RBRACE, "Expected '}'")
+                return ast.RecordUpdate(
+                    record=base,
+                    updates=updates,
+                )
+            elif self._match(TokenType.COLON):
+                value = self._parse_expr()
+                fields = [ast.RecordField(name=base.name, value=value)]
+                while self._match(TokenType.COMMA):
+                    field_name = self._match(
+                        TokenType.IDENT,
+                        TokenType.KW_MODULE,
+                        TokenType.KW_TYPE,
+                        TokenType.KW_DATA,
+                        TokenType.KW_DEF,
+                        TokenType.KW_LET,
+                        TokenType.KW_IN,
+                        TokenType.KW_IF,
+                        TokenType.KW_THEN,
+                        TokenType.KW_ELSE,
+                        TokenType.KW_MATCH,
+                        TokenType.KW_WITH,
+                        TokenType.KW_INTERFACE,
+                        TokenType.KW_IMPL,
+                        TokenType.KW_IMPORT,
+                        TokenType.KW_EXPORT,
+                        TokenType.KW_AS,
+                        TokenType.KW_EFFECT,
+                        TokenType.KW_HANDLER,
+                        TokenType.KW_HANDLE,
+                        TokenType.KW_DO,
+                        TokenType.KW_FORALL,
+                        TokenType.KW_EXISTS,
+                        TokenType.KW_FAMILY,
+                        TokenType.KW_WHERE,
+                        TokenType.KW_FN,
+                        TokenType.KW_GADT,
+                    )
+                    if not field_name:
+                        field_name = self._expect(
+                            TokenType.IDENT, "Expected field name"
+                        )
+                    self._expect(TokenType.COLON, "Expected ':'")
+                    value = self._parse_expr()
+                    fields.append(ast.RecordField(name=field_name.value, value=value))
+                self._expect(TokenType.RBRACE, "Expected '}'")
+                return ast.RecordLit(fields=fields)
+            else:
+                self._expect(TokenType.RBRACE, "Expected '}', ':', or 'with'")
 
         fields = []
         if not self._check(TokenType.RBRACE):
             while True:
-                field_name = self._expect(TokenType.IDENT, "Expected field name")
+                field_name = self._match(
+                    TokenType.IDENT,
+                    TokenType.KW_MODULE,
+                    TokenType.KW_TYPE,
+                    TokenType.KW_DATA,
+                    TokenType.KW_DEF,
+                    TokenType.KW_LET,
+                    TokenType.KW_IN,
+                    TokenType.KW_IF,
+                    TokenType.KW_THEN,
+                    TokenType.KW_ELSE,
+                    TokenType.KW_MATCH,
+                    TokenType.KW_WITH,
+                    TokenType.KW_INTERFACE,
+                    TokenType.KW_IMPL,
+                    TokenType.KW_IMPORT,
+                    TokenType.KW_EXPORT,
+                    TokenType.KW_AS,
+                    TokenType.KW_EFFECT,
+                    TokenType.KW_HANDLER,
+                    TokenType.KW_HANDLE,
+                    TokenType.KW_DO,
+                    TokenType.KW_FORALL,
+                    TokenType.KW_EXISTS,
+                    TokenType.KW_FAMILY,
+                    TokenType.KW_WHERE,
+                    TokenType.KW_FN,
+                    TokenType.KW_GADT,
+                )
+                if not field_name:
+                    field_name = self._expect(TokenType.IDENT, "Expected field name")
                 self._expect(TokenType.COLON, "Expected ':'")
                 value = self._parse_expr()
                 fields.append(ast.RecordField(name=field_name.value, value=value))

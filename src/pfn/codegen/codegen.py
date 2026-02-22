@@ -4,11 +4,57 @@ from pfn.parser import ast
 
 
 class CodeGenerator:
+    PYTHON_KEYWORDS = {
+        "lambda",
+        "def",
+        "class",
+        "if",
+        "else",
+        "elif",
+        "for",
+        "while",
+        "try",
+        "except",
+        "finally",
+        "with",
+        "as",
+        "import",
+        "from",
+        "return",
+        "yield",
+        "raise",
+        "break",
+        "continue",
+        "pass",
+        "True",
+        "False",
+        "None",
+        "and",
+        "or",
+        "not",
+        "in",
+        "is",
+        "global",
+        "nonlocal",
+        "assert",
+        "del",
+        "match",
+        "case",
+    }
+
+    def _safe_name(self, name: str) -> str:
+        if name in self.PYTHON_KEYWORDS:
+            return f"_{name}_"
+        return name
+
     def generate(self, node: ast.Expr) -> str:
         return self._gen_expr(node)
 
     def generate_module(self, module: ast.Module) -> str:
-        lines = []
+        lines = [
+            "from __future__ import annotations",
+            "from stdlib import String, List, Dict, Set, Maybe, Result, Just, Nothing, Ok, Err, Record",
+        ]
         for decl in module.declarations:
             lines.append(self._gen_decl(decl))
         return "\n\n".join(lines)
@@ -23,20 +69,21 @@ class CodeGenerator:
         return ""
 
     def _gen_def_decl(self, decl: ast.DefDecl) -> str:
-        params_str = ", ".join(p.name for p in decl.params)
+        safe_name = self._safe_name(decl.name)
+        params_str = ", ".join(self._safe_name(p.name) for p in decl.params)
         body_code = self._gen_expr(decl.body)
 
         if len(decl.params) > 1:
             inner_body = body_code
             for param in reversed(decl.params[1:]):
-                inner_body = f"lambda {param.name}: {inner_body}"
-            func_def = f"def {decl.name}({decl.params[0].name}): return {inner_body}"
+                inner_body = f"lambda {self._safe_name(param.name)}: {inner_body}"
+            func_def = f"def {safe_name}({self._safe_name(decl.params[0].name)}): return {inner_body}"
         else:
-            func_def = f"def {decl.name}({params_str}):\n    return {body_code}"
+            func_def = f"def {safe_name}({params_str}):\n    return {body_code}"
 
         if decl.is_exported:
             export_name = decl.export_name or decl.name
-            return f"{func_def}\n\n{export_name} = {decl.name}"
+            return f"{func_def}\n\n{export_name} = {safe_name}"
 
         return func_def
 
@@ -73,9 +120,20 @@ class CodeGenerator:
         return "\n".join(lines)
 
     def _gen_import_decl(self, decl: ast.ImportDecl) -> str:
+        module = decl.module.replace("Bootstrap.", "bootstrap.")
         if decl.alias:
-            return f"import {decl.module} as {decl.alias}"
-        return f"import {decl.module}"
+            return f"import {module} as {decl.alias}"
+        if decl.exposing:
+            if decl.exposing == [".."]:
+                return f"from {module} import *"
+            names = []
+            for name in decl.exposing:
+                if name.endswith("(..)"):
+                    names.append(name[:-4])
+                else:
+                    names.append(name)
+            return f"from {module} import {', '.join(names)}"
+        return f"import {module}"
 
     def _gen_type_ref(self, type_ref: ast.TypeRef) -> str:
         if isinstance(type_ref, ast.SimpleTypeRef):
@@ -117,7 +175,7 @@ class CodeGenerator:
         if isinstance(expr, ast.UnitLit):
             return "None"
         if isinstance(expr, ast.Var):
-            return expr.name
+            return self._safe_name(expr.name)
         if isinstance(expr, ast.Lambda):
             return self._gen_lambda(expr)
         if isinstance(expr, ast.App):
@@ -130,6 +188,8 @@ class CodeGenerator:
             return self._gen_if(expr)
         if isinstance(expr, ast.Let):
             return self._gen_let(expr)
+        if isinstance(expr, ast.LetPattern):
+            return self._gen_let_pattern(expr)
         if isinstance(expr, ast.LetFunc):
             return self._gen_let_func(expr)
         if isinstance(expr, ast.Match):
@@ -140,6 +200,8 @@ class CodeGenerator:
             return self._gen_tuple(expr)
         if isinstance(expr, ast.RecordLit):
             return self._gen_record(expr)
+        if isinstance(expr, ast.RecordUpdate):
+            return self._gen_record_update(expr)
         if isinstance(expr, ast.FieldAccess):
             return self._gen_field_access(expr)
         if isinstance(expr, ast.IndexAccess):
@@ -168,6 +230,10 @@ class CodeGenerator:
             return f"[{left_code}] + {right_code}"
         if op == "++":
             return f"{left_code} + {right_code}"
+        if op == "||":
+            return f"{left_code} or {right_code}"
+        if op == "&&":
+            return f"{left_code} and {right_code}"
         return f"{left_code} {op} {right_code}"
 
     def _gen_unaryop(self, expr: ast.UnaryOp) -> str:
@@ -183,7 +249,22 @@ class CodeGenerator:
     def _gen_let(self, expr: ast.Let) -> str:
         value_code = self._gen_expr(expr.value)
         body_code = self._gen_expr(expr.body)
-        return f"({body_code} if ({expr.name} := {value_code}) is not None else None)"
+        safe_name = self._safe_name(expr.name)
+        return f"(lambda {safe_name}: {body_code})({value_code})"
+
+    def _gen_let_pattern(self, expr: ast.LetPattern) -> str:
+        value_code = self._gen_expr(expr.value)
+        body_code = self._gen_expr(expr.body)
+        pattern_check, bindings = self._gen_pattern_check(expr.pattern, "__let_val")
+        if pattern_check == "True" and not bindings:
+            return body_code
+        if bindings:
+            import re
+
+            for name, var_path in bindings.items():
+                pattern = r"\b" + re.escape(name) + r"\b"
+                body_code = re.sub(pattern, var_path, body_code)
+        return f"(lambda __let_val: {body_code} if {pattern_check} else None)({value_code})"
 
     def _gen_let_func(self, expr: ast.LetFunc) -> str:
         params_str = ", ".join(p.name for p in expr.params)
@@ -197,18 +278,22 @@ class CodeGenerator:
             return "None"
 
         result = "(lambda __match_val: "
-        conds = []
+        parts = []
         for case in expr.cases:
             pattern_check, bindings = self._gen_pattern_check(
                 case.pattern, "__match_val"
             )
             body_code = self._gen_expr_with_bindings(case.body, bindings)
-            if pattern_check == "True":
-                conds.append(f"({body_code})")
-            else:
-                conds.append(f"({body_code} if {pattern_check} else None)")
+            parts.append((pattern_check, body_code))
 
-        result += " else ".join(conds) + ")({})".format(scrutinee_code)
+        chain = parts[-1][1]
+        for pattern_check, body_code in reversed(parts[:-1]):
+            if pattern_check == "True":
+                chain = body_code
+            else:
+                chain = f"({body_code} if {pattern_check} else {chain})"
+
+        result += chain + ")({})".format(scrutinee_code)
         return result
 
     def _gen_pattern_check(
@@ -237,10 +322,38 @@ class CodeGenerator:
             return "isinstance({}, list)".format(var), bindings
         if isinstance(pattern, ast.ConsPattern):
             return "isinstance({}, list) and len({}) > 0".format(var, var), bindings
+        if isinstance(pattern, ast.TuplePattern):
+            check = (
+                f"isinstance({var}, tuple) and len({var}) == {len(pattern.elements)}"
+            )
+            for i, elem in enumerate(pattern.elements):
+                elem_var = f"{var}[{i}]"
+                elem_check, elem_bindings = self._gen_pattern_check(elem, elem_var)
+                if elem_check != "True":
+                    check = f"{check} and {elem_check}"
+                bindings.update(elem_bindings)
+            return check, bindings
+        if isinstance(pattern, ast.ConstructorPattern):
+            check = f"isinstance({var}, {pattern.name})"
+            for i, arg in enumerate(pattern.args):
+                arg_var = f"{var}._field{i}"
+                arg_check, arg_bindings = self._gen_pattern_check(arg, arg_var)
+                if arg_check != "True":
+                    check = f"{check} and {arg_check}"
+                bindings.update(arg_bindings)
+            return check, bindings
         return "True", bindings
 
     def _gen_expr_with_bindings(self, expr: ast.Expr, bindings: dict[str, str]) -> str:
-        return self._gen_expr(expr)
+        if not bindings:
+            return self._gen_expr(expr)
+        code = self._gen_expr(expr)
+        import re
+
+        for name, var_path in bindings.items():
+            pattern = r"\b" + re.escape(name) + r"\b"
+            code = re.sub(pattern, var_path, code)
+        return code
 
     def _gen_list(self, expr: ast.ListLit) -> str:
         elems_str = ", ".join(self._gen_expr(e) for e in expr.elements)
@@ -254,7 +367,14 @@ class CodeGenerator:
         fields_str = ", ".join(
             f'"{f.name}": {self._gen_expr(f.value)}' for f in expr.fields
         )
-        return f"{{{fields_str}}}"
+        return f"Record({{{fields_str}}})"
+
+    def _gen_record_update(self, expr: ast.RecordUpdate) -> str:
+        record_code = self._gen_expr(expr.record)
+        updates_str = ", ".join(
+            f'"{f.name}": {self._gen_expr(f.value)}' for f in expr.updates
+        )
+        return f"Record({{**{record_code}, {updates_str}}})"
 
     def _gen_field_access(self, expr: ast.FieldAccess) -> str:
         expr_code = self._gen_expr(expr.expr)

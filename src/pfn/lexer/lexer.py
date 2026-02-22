@@ -295,9 +295,25 @@ class Lexer:
                 TokenType.COMMA, ",", self._span_from(start_pos, start_line, start_col)
             )
         elif char == ".":
-            self._add_token(
-                TokenType.DOT, ".", self._span_from(start_pos, start_line, start_col)
-            )
+            if self._match("."):
+                if self._match("."):
+                    self._add_token(
+                        TokenType.TRIPLE_DOT,
+                        "...",
+                        self._span_from(start_pos, start_line, start_col),
+                    )
+                else:
+                    self._add_token(
+                        TokenType.DOUBLE_DOT,
+                        "..",
+                        self._span_from(start_pos, start_line, start_col),
+                    )
+            else:
+                self._add_token(
+                    TokenType.DOT,
+                    ".",
+                    self._span_from(start_pos, start_line, start_col),
+                )
         elif char == ";":
             self._add_token(
                 TokenType.SEMICOLON,
@@ -308,6 +324,12 @@ class Lexer:
             self._add_token(
                 TokenType.BACKTICK,
                 "`",
+                self._span_from(start_pos, start_line, start_col),
+            )
+        elif char == "\\":
+            self._add_token(
+                TokenType.BACKSLASH,
+                "\\",
                 self._span_from(start_pos, start_line, start_col),
             )
         else:
