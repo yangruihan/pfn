@@ -232,20 +232,34 @@ def generateMatch(data: MatchData) : String =
     "None"
   else
     let scrutineeCode = generateExpr(data.scrutinee)
-    in let casesCode = generateMatchCases(data.cases, "__match_val", [])
-    in "(lambda __match_val: " ++ String.join(" else ", casesCode) ++ ")(" ++ scrutineeCode ++ ")"
+    in let casesCode = generateMatchCases(data.cases, "__match_val")
+    in "(lambda __match_val: " ++ casesCode ++ ")(" ++ scrutineeCode ++ ")"
 
-def generateMatchCases(cases: List MatchCase, var: String, lines: List String) : List String =
+def generateMatchCases(cases: List MatchCase, var: String) : String =
   match cases with
-    [] -> List.reverse(lines)
-    [c | rest] ->
+    [] -> "None"
+    [c] ->
       let (patternCheck, bindings) = generatePatternCheck(c.pattern, var)
-      in let bodyCode = generateExpr(c.body)
-      in let caseCode = if patternCheck == "True" then
-        "(" ++ bodyCode ++ ")"
+      in let bodyCode = generateExprWithBindings(c.body, bindings)
+      in if patternCheck == "True" then
+        bodyCode
       else
         "(" ++ bodyCode ++ " if " ++ patternCheck ++ " else None)"
-      in generateMatchCases(rest, var, [caseCode] ++ lines)
+    [c | rest] ->
+      let (patternCheck, bindings) = generatePatternCheck(c.pattern, var)
+      in let bodyCode = generateExprWithBindings(c.body, bindings)
+      in let restCode = generateMatchCases(rest, var)
+      in if patternCheck == "True" then
+        bodyCode
+      else
+        "(" ++ bodyCode ++ " if " ++ patternCheck ++ " else " ++ restCode ++ ")"
+
+def generateExprWithBindings(expr: Expr, bindings: List (String, String)) : String =
+  match bindings with
+    [] -> generateExpr(expr)
+    [(name, varPath) | rest] ->
+      let code = generateExprWithBindings(expr, rest)
+      in String.replace(name, varPath, code)
 
 -- ============ Pattern Check ============
 
@@ -263,8 +277,24 @@ def generatePatternCheck(pattern: Pattern, var: String) : (String, List (String,
         (var ++ " == []", [])
       else
         ("isinstance(" ++ var ++ ", list)", [])
-    ConsPattern(_) ->
-      ("isinstance(" ++ var ++ ", list) and len(" ++ var ++ ") > 0", [])
+    ConsPattern(data) ->
+      let check = "isinstance(" ++ var ++ ", list) and len(" ++ var ++ ") > 0"
+      in let (headCheck, headBindings) = generatePatternCheck(data.head, var ++ "[0]")
+      in let (tailCheck, tailBindings) = generatePatternCheck(data.tail, var ++ "[1:]")
+      in let finalCheck = if headCheck == "True" then check else check ++ " and " ++ headCheck
+      in let finalCheck2 = if tailCheck == "True" then finalCheck else finalCheck ++ " and " ++ tailCheck
+      in (finalCheck2, headBindings ++ tailBindings)
+    TuplePattern(elements) ->
+      let check = "isinstance(" ++ var ++ ", tuple) and len(" ++ var ++ ") == " ++ toString(List.length(elements))
+      in let bindings = generateTuplePatternBindings(elements, var, 0, [])
+      in (check, bindings)
+    ConstructorPattern(data) ->
+      if List.isEmpty(data.args) then
+        (var ++ " is " ++ data.name, [])
+      else
+        let check = "isinstance(" ++ var ++ ", " ++ data.name ++ ")"
+        in let bindings = generateConstructorPatternBindings(data.args, var, 0, [])
+        in (check, bindings)
     _ -> ("True", [])
 
 -- ============ List Literal ============
@@ -324,3 +354,20 @@ def escapeString(s: String) : String =
 
 def reprChar(c: Char) : String =
   "'" ++ toString(c) ++ "'"
+-- ============ Pattern Binding Helpers ============
+
+def generateTuplePatternBindings(elements: List Pattern, var: String, index: Int, bindings: List (String, String)) : List (String, String) =
+  match elements with
+    [] -> List.reverse(bindings)
+    [p | rest] ->
+      let elemVar = var ++ "[" ++ toString(index) ++ "]"
+      in let (_, newBindings) = generatePatternCheck(p, elemVar)
+      in generateTuplePatternBindings(rest, var, index + 1, newBindings ++ bindings)
+
+def generateConstructorPatternBindings(args: List Pattern, var: String, index: Int, bindings: List (String, String)) : List (String, String) =
+  match args with
+    [] -> List.reverse(bindings)
+    [p | rest] ->
+      let argVar = var ++ "._field" ++ toString(index)
+      in let (_, newBindings) = generatePatternCheck(p, argVar)
+      in generateConstructorPatternBindings(rest, var, index + 1, newBindings ++ bindings)

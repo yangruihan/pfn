@@ -3,7 +3,7 @@
 
 module Bootstrap.Parser
 
-import Bootstrap.Token (Token, TokenType, Span, TokenValue(..))
+import Bootstrap.Token (..)
 import Bootstrap.AST (..)
 
 -- ============ Error Handling ============

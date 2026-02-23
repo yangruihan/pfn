@@ -33,13 +33,13 @@ def _pass_(name):
 
 def fail(name): return lambda message: testResult(name)(False)(message)
 
-testKeywords = (lambda kw: (lambda __match_val: (_pass_('keywords lookup') if isinstance(__match_val, Just) and isinstance(__match_val._field0, KW_DEF) else fail('keywords lookup')("Expected KW_DEF for 'def'")))(kw))(lookupKeyword('def'))
+testKeywords = (lambda kw: (lambda __match_val: (_pass_('keywords lookup') if isinstance(__match_val, Just) and __match_val._field0 is KW_DEF else fail('keywords lookup')("Expected KW_DEF for 'def'")))(kw))(lookupKeyword('def'))
 
 testTokenCreation = (lambda span: (lambda tok: _pass_('token creation') if tok.tokenType == IDENT and getTokenString(tok) == 'foo' else fail('token creation')('Token not created correctly'))(stringToken(IDENT)('foo')(span)))(makeSpan(0)(3)(1)(1))
 
 testLexerSimple = (lambda tokens: (lambda __match_val: ((lambda __match_val: (_pass_('lexer simple') if __match_val._field0.tokenType == KW_DEF else fail('lexer simple')('First token should be KW_DEF') if isinstance(__match_val, Just) else fail('lexer simple')('No tokens')))(List.getAt(0)(__match_val._field0)) if List.length(__match_val._field0) >= 4 else fail('lexer simple')('Expected at least 4 tokens') if isinstance(__match_val, Ok) else fail('lexer simple')('Lexer error')))(tokens))(tokenize('def foo = 42'))
 
-testLexerString = (lambda tokens: (lambda __match_val: (lambda __match_val: (_pass_('lexer string') if __match_val._field0.tokenType == STRING and getTokenString(__match_val._field0) == 'hello world' else fail('lexer string')('String not lexed correctly') if isinstance(__match_val, Just) else (fail('lexer string')('No tokens') if isinstance(__match_val, Nothing) else fail('lexer string')('Lexer error'))))(List.getAt(0)(__match_val._field0)))(tokens))(tokenize('"hello world"'))
+testLexerString = (lambda tokens: (lambda __match_val: (lambda __match_val: (_pass_('lexer string') if __match_val._field0.tokenType == STRING and getTokenString(__match_val._field0) == 'hello world' else fail('lexer string')('String not lexed correctly') if isinstance(__match_val, Just) else (fail('lexer string')('No tokens') if __match_val is Nothing else fail('lexer string')('Lexer error'))))(List.getAt(0)(__match_val._field0)))(tokens))(tokenize('"hello world"'))
 
 testLexerOperators = (lambda tokens: (lambda __match_val: (_pass_('lexer operators') if List.length(__match_val._field0) >= 5 else fail('lexer operators')('Not enough operator tokens') if isinstance(__match_val, Ok) else fail('lexer operators')('Lexer error')))(tokens))(tokenize('-> => :: ++ ||'))
 
@@ -53,19 +53,19 @@ testParseList = (lambda tokens: (lambda __match_val: (lambda __match_val: (lambd
 
 testUnifyInt = (lambda __match_val: (_pass_('unify int') if isinstance(__match_val, Just) else fail('unify int')('Int should unify with Int')))(unify(TInt)(TInt))
 
-testUnifyVar = (lambda tv: (lambda __match_val: (lambda result: (lambda __match_val: (_pass_('unify var') if isinstance(__match_val, TInt) else fail('unify var')('Variable should be substituted to Int')))(result))(applySubst(__match_val._field0)(tv)))(unify(tv)(TInt)))(tVar('a'))
+testUnifyVar = (lambda tv: (lambda __match_val: (lambda result: (lambda __match_val: (_pass_('unify var') if __match_val is TInt else fail('unify var')('Variable should be substituted to Int')))(result))(applySubst(__match_val._field0)(tv)))(unify(tv)(TInt)))(tVar('a'))
 
-testUnifyFun = (lambda t1: (lambda t2: (lambda __match_val: (lambda result: (lambda __match_val: (_pass_('unify fun') if isinstance(__match_val, TString) else fail('unify fun')('Type variable should be String')))(result))(applySubst(__match_val._field0)(tVar('a'))))(unify(t1)(t2)))(tFun(TInt)(TString)))(tFun(TInt)(tVar('a')))
+testUnifyFun = (lambda t1: (lambda t2: (lambda __match_val: (lambda result: (lambda __match_val: (_pass_('unify fun') if __match_val is TString else fail('unify fun')('Type variable should be String')))(result))(applySubst(__match_val._field0)(tVar('a'))))(unify(t1)(t2)))(tFun(TInt)(TString)))(tFun(TInt)(tVar('a')))
 
 testFreeVars = (lambda t: (lambda fv: _pass_('free vars') if Set.member('a')(fv) and Set.member('b')(fv) else fail('free vars')('Should have a and b as free vars'))(freeVars(t)))(tFun(tVar('a'))(tVar('b')))
 
-testInferInt = (lambda state: (lambda __match_val: (lambda __match_val: (_pass_('infer int') if isinstance(__match_val, TInt) else fail('infer int')('Expected Int type')))(__match_val._field0.type))(infer(state)(IntLit(42))))(initTypeChecker)
+testInferInt = (lambda state: (lambda __match_val: (lambda __match_val: (_pass_('infer int') if __match_val is TInt else fail('infer int')('Expected Int type')))(__match_val._field0.type))(infer(state)(IntLit(42))))(initTypeChecker)
 
-testInferString = (lambda state: (lambda __match_val: (lambda __match_val: (_pass_('infer string') if isinstance(__match_val, TString) else fail('infer string')('Expected String type')))(__match_val._field0.type))(infer(state)(StringLit('hello'))))(initTypeChecker)
+testInferString = (lambda state: (lambda __match_val: (lambda __match_val: (_pass_('infer string') if __match_val is TString else fail('infer string')('Expected String type')))(__match_val._field0.type))(infer(state)(StringLit('hello'))))(initTypeChecker)
 
 testInferLambda = (lambda state: (lambda expr: (lambda __match_val: (lambda __match_val: (_pass_('infer lambda') if isinstance(__match_val, TFun) else fail('infer lambda')('Expected function type')))(__match_val._field0.type))(infer(state)(expr)))(Lambda(Record({"params": [param('x')], "body": Var('x')}))))(initTypeChecker)
 
-testInferList = (lambda state: (lambda expr: (lambda __match_val: (lambda __match_val: (lambda __match_val: (_pass_('infer list') if isinstance(__match_val, TInt) else fail('infer list')('Expected Int element type')))(__match_val._field0.elem))(__match_val._field0.type))(infer(state)(expr)))(ListLit([IntLit(1), IntLit(2), IntLit(3)])))(initTypeChecker)
+testInferList = (lambda state: (lambda expr: (lambda __match_val: (lambda __match_val: (lambda __match_val: (_pass_('infer list') if __match_val is TInt else fail('infer list')('Expected Int element type')))(__match_val._field0.elem))(__match_val._field0.type))(infer(state)(expr)))(ListLit([IntLit(1), IntLit(2), IntLit(3)])))(initTypeChecker)
 
 testCodegenInt = (lambda code: _pass_('codegen int') if code == '42' else fail('codegen int')("Expected '42', got: " + code))(generateExpr(IntLit(42)))
 

@@ -24,13 +24,11 @@ def compile(source):
 def typeCheckModule(mod):
     return typeCheckDecls(mod.declarations)(initTypeChecker)
 
-def typeCheckDecls(decls): return lambda state: (lambda __match_val: (Ok(None) if __match_val == [] else (lambda __match_val: (typeCheckDecls(rest)(state) if isinstance(__match_val, Ok) else (Err(__match_val._field0) if isinstance(__match_val, Err) else typeCheckDecls(rest)(state))))(inferLetFunc(state)(emptySubst)(data.name)(data.params)(data.body)(UnitLit))))(decls)
+def typeCheckDecls(decls): return lambda state: (lambda __match_val: (Ok(None) if __match_val == [] else (lambda __match_val: (typeCheckDecls(__match_val[1:])(state) if isinstance(__match_val, Ok) else (Err(__match_val._field0) if isinstance(__match_val, Err) else typeCheckDecls(__match_val[1:])(state))))(inferLetFunc(state)(emptySubst)(__match_val[0]._field0.name)(__match_val[0]._field0.params)(__match_val[0]._field0.body)(UnitLit))))(decls)
 
 def compileAndPrint(source):
     return (lambda __match_val: ('Generated Python:\n' + __match_val._field0 if isinstance(__match_val, Ok) else 'Error: ' + __match_val._field0))(compile(source))
 
-# Disabled to avoid infinite loop during import
-# example = (lambda source: compileAndPrint(source))('def add x y = x + y')
-example = ''
+example = (lambda source: compileAndPrint(source))('def add x y = x + y')
 
 main = 'Pfn Bootstrap Compiler\n\n' + example

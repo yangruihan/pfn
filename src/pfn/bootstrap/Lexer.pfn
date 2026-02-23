@@ -253,7 +253,7 @@ def scanToken(state: LexerState) : LexerResult LexerState =
               else if isAlpha(char) || char == '_'
                 then if char == '_' && not(isAlnum(peek(state1)) || peek(state1) == '_')
                   then Ok (addSimpleToken(UNDERSCORE, spanFrom(startPos, startLine, startCol)(state1))(state1))
-                  else Ok (scanIdentifier(startPos, startLine, startCol)(state1))
+                  else Ok (scanIdentifier(startPos, startLine, startCol)(state))
                 -- Operators and punctuation
                 else scanOperator(char, startPos, startLine, startCol)(state1)
 
@@ -331,13 +331,15 @@ def scanOperator(char: Char, startPos: Int, startLine: Int, startCol: Int)(state
     '`' -> addTok BACKTICK
     _ -> Error { message: "Unexpected character: " ++ String.fromChar(char), span: span }
 
--- Main tokenization loop
+-- Main tokenization loop (iterative to avoid recursion depth issues)
 def tokenizeLoop(state: LexerState) : LexerResult LexerState =
-  if atEnd(state)
-    then Ok state
-    else match scanToken(state) with
-      Ok state2 -> tokenizeLoop(state2)
-      Error err -> Error err
+  let rec go st =
+        if atEnd(st)
+          then Ok st
+          else match scanToken(st) with
+            Ok st2 -> go st2
+            Error err -> Error err
+  in go state
 
 -- Main entry point: tokenize source code
 def tokenize(source: String) : LexerResult (List Token) =
