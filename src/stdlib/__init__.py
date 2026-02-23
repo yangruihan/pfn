@@ -1,5 +1,5 @@
 """Stdlib shim for compiled Pfn code."""
-from pfn.runtime.types import Dict as _Dict, Set as _Set, string_len, to_string
+from pfn.runtime.types import Dict as _Dict, Set as _Set, string_len, to_string, toString
 from pfn.runtime.core import (
     Option, Result, Some, None_, Ok, Error, Lazy, foldl,
     is_some, is_none, from_some, from_opt, is_ok, is_error, from_ok, from_error
@@ -310,6 +310,13 @@ class List:
                 result.append(x)
             return result
         return inner
+    
+    @staticmethod
+    def member(elem):
+        """Check if element is in list."""
+        def inner(lst):
+            return elem in lst
+        return inner
 
 # Aliases for Pfn naming conventions
 Just = Some
@@ -329,6 +336,14 @@ def reverse(lst):
 
 def _not_(x):
     return not x
+
+def fst(pair):
+    """Get first element of a tuple."""
+    return pair[0]
+
+def snd(pair):
+    """Get second element of a tuple."""
+    return pair[1]
 
 def error(msg):
     """Raise a runtime error."""

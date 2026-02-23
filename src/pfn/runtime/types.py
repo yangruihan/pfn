@@ -386,6 +386,10 @@ def to_string(x: Any) -> str:
     return str(x)
 
 
+# Alias for camelCase naming
+toString = to_string
+
+
 def to_int(x: Any) -> int:
     """Generic to int conversion."""
     return int(x)

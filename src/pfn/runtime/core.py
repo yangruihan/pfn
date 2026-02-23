@@ -113,20 +113,19 @@ def flip(f: Callable[..., Any]) -> Callable[..., Any]:
 
 class _Some(Generic[T]):
     """Some constructor for Option type."""
-
     __slots__ = ("value",)
-
     def __init__(self, value: T):
         self.value = value
-
+    @property
+    def _field0(self) -> T:
+        """Alias for value, used by Pfn pattern matching."""
+        return self.value
     def __repr__(self) -> str:
         return f"Some({self.value!r})"
-
     def __eq__(self, other: object) -> bool:
         if isinstance(other, _Some):
             return self.value == other.value
         return False
-
     def __hash__(self) -> int:
         return hash(("Some", self.value))
 
@@ -187,15 +186,15 @@ def from_opt(default: T, opt: Option[T]) -> T:
 
 class _Ok(Generic[T]):
     """Ok constructor for Result type."""
-
     __slots__ = ("value",)
-
     def __init__(self, value: T):
         self.value = value
-
+    @property
+    def _field0(self) -> T:
+        """Alias for value, used by Pfn pattern matching."""
+        return self.value
     def __repr__(self) -> str:
         return f"Ok({self.value!r})"
-
     def __eq__(self, other: object) -> bool:
         if isinstance(other, _Ok):
             return self.value == other.value
@@ -204,15 +203,15 @@ class _Ok(Generic[T]):
 
 class _Error(Generic[T]):
     """Error constructor for Result type."""
-
     __slots__ = ("value",)
-
     def __init__(self, value: T):
         self.value = value
-
+    @property
+    def _field0(self) -> T:
+        """Alias for value, used by Pfn pattern matching."""
+        return self.value
     def __repr__(self) -> str:
         return f"Error({self.value!r})"
-
     def __eq__(self, other: object) -> bool:
         if isinstance(other, _Error):
             return self.value == other.value
@@ -295,6 +294,11 @@ def concat(xss: list[list[T]]) -> list[T]:
 def length(xs: list[Any]) -> int:
     """Get list length."""
     return len(xs)
+
+
+def member(elem: Any) -> Callable[[list[Any]], bool]:
+    """Check if element is in list."""
+    return lambda xs: elem in xs
 
 
 def head(xs: list[T]) -> Option[T]:
@@ -479,6 +483,7 @@ __all__ = [
     "flat_map",
     "concat",
     "length",
+    "member",
     "head",
     "tail",
     "last",
