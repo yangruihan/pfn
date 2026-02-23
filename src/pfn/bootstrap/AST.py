@@ -1,0 +1,628 @@
+from __future__ import annotations
+
+from stdlib import String, List, Dict, Set, Maybe, Result, Just, Nothing, Ok, Err, Record
+
+from stdlib import reverse, _not_
+
+from bootstrap.Token import Span
+
+from dataclasses import dataclass
+from typing import Union
+
+@dataclass
+class SimpleTypeRef:
+    _field0: SimpleTypeRefData
+
+@dataclass
+class FunTypeRef:
+    _field0: FunTypeRefData
+
+@dataclass
+class TupleTypeRef:
+    _field0: TupleTypeRefData
+
+@dataclass
+class RecordTypeRef:
+    _field0: RecordTypeRefData
+
+TypeRef = Union[SimpleTypeRef, FunTypeRef, TupleTypeRef, RecordTypeRef]
+
+from dataclasses import dataclass
+
+@dataclass
+class SimpleTypeRefData:
+    name: str
+    args: list[TypeRef]
+
+from dataclasses import dataclass
+
+@dataclass
+class FunTypeRefData:
+    param: TypeRef
+    result: TypeRef
+
+from dataclasses import dataclass
+
+@dataclass
+class TupleTypeRefData:
+    elements: list[TypeRef]
+
+from dataclasses import dataclass
+
+@dataclass
+class RecordTypeRefData:
+    fields: list[tuple[str, TypeRef]]
+
+from dataclasses import dataclass
+
+@dataclass
+class Param:
+    name: str
+    typeAnnotation: Maybe[TypeRef]
+
+from dataclasses import dataclass
+from typing import Union
+
+@dataclass
+class IntPattern:
+    _field0: int
+
+@dataclass
+class FloatPattern:
+    _field0: float
+
+@dataclass
+class StringPattern:
+    _field0: str
+
+@dataclass
+class CharPattern:
+    _field0: Char
+
+@dataclass
+class BoolPattern:
+    _field0: bool
+
+@dataclass
+class VarPattern:
+    _field0: str
+
+class WildcardPattern:
+    _instance = None
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+@dataclass
+class ConsPattern:
+    _field0: ConsPatternData
+
+@dataclass
+class ListPattern:
+    _field0: list[Pattern]
+
+@dataclass
+class TuplePattern:
+    _field0: list[Pattern]
+
+@dataclass
+class RecordPattern:
+    _field0: list[tuple[str, Pattern]]
+
+@dataclass
+class ConstructorPattern:
+    _field0: ConstructorPatternData
+
+Pattern = Union[IntPattern, FloatPattern, StringPattern, CharPattern, BoolPattern, VarPattern, WildcardPattern, ConsPattern, ListPattern, TuplePattern, RecordPattern, ConstructorPattern]
+WildcardPattern = WildcardPattern()
+
+from dataclasses import dataclass
+
+@dataclass
+class ConsPatternData:
+    head: Pattern
+    tail: Pattern
+
+from dataclasses import dataclass
+
+@dataclass
+class ConstructorPatternData:
+    name: str
+    args: list[Pattern]
+
+from dataclasses import dataclass
+from typing import Union
+
+@dataclass
+class IntLit:
+    _field0: int
+
+@dataclass
+class FloatLit:
+    _field0: float
+
+@dataclass
+class StringLit:
+    _field0: str
+
+@dataclass
+class CharLit:
+    _field0: Char
+
+@dataclass
+class BoolLit:
+    _field0: bool
+
+class UnitLit:
+    _instance = None
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+@dataclass
+class Var:
+    _field0: str
+
+@dataclass
+class Lambda:
+    _field0: LambdaData
+
+@dataclass
+class App:
+    _field0: AppData
+
+@dataclass
+class BinOp:
+    _field0: BinOpData
+
+@dataclass
+class UnaryOp:
+    _field0: UnaryOpData
+
+@dataclass
+class If:
+    _field0: IfData
+
+@dataclass
+class Let:
+    _field0: LetData
+
+@dataclass
+class LetFunc:
+    _field0: LetFuncData
+
+@dataclass
+class Match:
+    _field0: MatchData
+
+@dataclass
+class DoNotation:
+    _field0: DoNotationData
+
+@dataclass
+class ListLit:
+    _field0: list[Expr]
+
+@dataclass
+class TupleLit:
+    _field0: list[Expr]
+
+@dataclass
+class RecordLit:
+    _field0: list[RecordField]
+
+@dataclass
+class FieldAccess:
+    _field0: FieldAccessData
+
+@dataclass
+class RecordUpdate:
+    _field0: RecordUpdateData
+
+@dataclass
+class IndexAccess:
+    _field0: IndexAccessData
+
+@dataclass
+class Slice:
+    _field0: SliceData
+
+@dataclass
+class HandleExpr:
+    _field0: HandleExprData
+
+@dataclass
+class PerformExpr:
+    _field0: PerformExprData
+
+Expr = Union[IntLit, FloatLit, StringLit, CharLit, BoolLit, UnitLit, Var, Lambda, App, BinOp, UnaryOp, If, Let, LetFunc, Match, DoNotation, ListLit, TupleLit, RecordLit, FieldAccess, RecordUpdate, IndexAccess, Slice, HandleExpr, PerformExpr]
+UnitLit = UnitLit()
+
+from dataclasses import dataclass
+
+@dataclass
+class LambdaData:
+    params: list[Param]
+    body: Expr
+
+from dataclasses import dataclass
+
+@dataclass
+class AppData:
+    func: Expr
+    args: list[Expr]
+
+from dataclasses import dataclass
+
+@dataclass
+class BinOpData:
+    left: Expr
+    op: str
+    right: Expr
+
+from dataclasses import dataclass
+
+@dataclass
+class UnaryOpData:
+    op: str
+    operand: Expr
+
+from dataclasses import dataclass
+
+@dataclass
+class IfData:
+    cond: Expr
+    thenBranch: Expr
+    elseBranch: Expr
+
+from dataclasses import dataclass
+
+@dataclass
+class LetData:
+    name: str
+    value: Expr
+    body: Expr
+
+from dataclasses import dataclass
+
+@dataclass
+class LetFuncData:
+    name: str
+    params: list[Param]
+    value: Expr
+    body: Expr
+
+from dataclasses import dataclass
+
+@dataclass
+class MatchData:
+    scrutinee: Expr
+    cases: list[MatchCase]
+
+from dataclasses import dataclass
+
+@dataclass
+class MatchCase:
+    pattern: Pattern
+    body: Expr
+    guard: Maybe[Expr]
+
+from dataclasses import dataclass
+
+@dataclass
+class DoNotationData:
+    bindings: list[DoBinding]
+    body: Expr
+
+from dataclasses import dataclass
+
+@dataclass
+class DoBinding:
+    name: str
+    value: Expr
+
+from dataclasses import dataclass
+
+@dataclass
+class RecordField:
+    name: str
+    value: Expr
+
+from dataclasses import dataclass
+
+@dataclass
+class FieldAccessData:
+    expr: Expr
+    field: str
+
+from dataclasses import dataclass
+
+@dataclass
+class RecordUpdateData:
+    record: Expr
+    updates: list[RecordField]
+
+from dataclasses import dataclass
+
+@dataclass
+class IndexAccessData:
+    expr: Expr
+    index: Expr
+
+from dataclasses import dataclass
+
+@dataclass
+class SliceData:
+    expr: Expr
+    start: Maybe[Expr]
+    end: Maybe[Expr]
+    step: Maybe[Expr]
+
+from dataclasses import dataclass
+
+@dataclass
+class HandleExprData:
+    expr: Expr
+    handlerCases: list[HandlerCase]
+    handlerName: Maybe[str]
+
+from dataclasses import dataclass
+
+@dataclass
+class PerformExprData:
+    effectName: str
+    opName: str
+    args: list[Expr]
+
+from dataclasses import dataclass
+from typing import Union
+
+@dataclass
+class DefDecl:
+    _field0: DefDeclData
+
+@dataclass
+class TypeDecl:
+    _field0: TypeDeclData
+
+@dataclass
+class TypeAliasDecl:
+    _field0: TypeAliasDeclData
+
+@dataclass
+class ImportDecl:
+    _field0: ImportDeclData
+
+@dataclass
+class ExportDecl:
+    _field0: ExportDeclData
+
+@dataclass
+class InterfaceDecl:
+    _field0: InterfaceDeclData
+
+@dataclass
+class ImplDecl:
+    _field0: ImplDeclData
+
+@dataclass
+class EffectDecl:
+    _field0: EffectDeclData
+
+@dataclass
+class HandlerDecl:
+    _field0: HandlerDeclData
+
+Decl = Union[DefDecl, TypeDecl, TypeAliasDecl, ImportDecl, ExportDecl, InterfaceDecl, ImplDecl, EffectDecl, HandlerDecl]
+
+from dataclasses import dataclass
+
+@dataclass
+class DefDeclData:
+    name: str
+    params: list[Param]
+    body: Expr
+    returnType: Maybe[TypeRef]
+    isExported: bool
+    exportName: Maybe[str]
+
+from dataclasses import dataclass
+
+@dataclass
+class TypeDeclData:
+    name: str
+    params: list[str]
+    constructors: list[Constructor]
+    isRecord: bool
+    recordFields: list[tuple[str, TypeRef]]
+    isGadt: bool
+
+from dataclasses import dataclass
+
+@dataclass
+class Constructor:
+    name: str
+    fields: list[TypeRef]
+
+from dataclasses import dataclass
+
+@dataclass
+class GADTConstructor:
+    name: str
+    params: list[TypeRef]
+    resultType: TypeRef
+
+from dataclasses import dataclass
+
+@dataclass
+class TypeAliasDeclData:
+    name: str
+    params: list[str]
+    typeRef: TypeRef
+
+from dataclasses import dataclass
+
+@dataclass
+class ImportDeclData:
+    module: str
+    alias: Maybe[str]
+    exposing: Maybe[list[str]]
+    isPython: bool
+
+from dataclasses import dataclass
+
+@dataclass
+class ExportDeclData:
+    names: list[str]
+
+from dataclasses import dataclass
+
+@dataclass
+class InterfaceDeclData:
+    name: str
+    params: list[str]
+    methods: list[InterfaceMethod]
+    superclasses: list[str]
+
+from dataclasses import dataclass
+
+@dataclass
+class InterfaceMethod:
+    name: str
+    typ: TypeRef
+
+from dataclasses import dataclass
+
+@dataclass
+class ImplDeclData:
+    className: str
+    typeRef: TypeRef
+    methods: list[ImplMethod]
+
+from dataclasses import dataclass
+
+@dataclass
+class ImplMethod:
+    name: str
+    params: list[Param]
+    body: Expr
+
+from dataclasses import dataclass
+
+@dataclass
+class EffectDeclData:
+    name: str
+    operations: list[EffectOp]
+
+from dataclasses import dataclass
+
+@dataclass
+class EffectOp:
+    name: str
+    typ: TypeRef
+
+from dataclasses import dataclass
+
+@dataclass
+class HandlerDeclData:
+    effectName: str
+    handlers: list[HandlerCase]
+    returnType: Maybe[TypeRef]
+
+from dataclasses import dataclass
+
+@dataclass
+class HandlerCase:
+    opName: str
+    body: Expr
+    params: list[Param]
+    resumeParam: Maybe[str]
+
+from dataclasses import dataclass
+
+@dataclass
+class Module:
+    name: Maybe[str]
+    declarations: list[Decl]
+
+def simpleType(name):
+    return SimpleTypeRef(Record({"name": name, "args": []}))
+
+def typeApp(name): return lambda args: SimpleTypeRef(Record({"name": name, "args": args}))
+
+def funType(param): return lambda result: FunTypeRef(Record({"param": param, "result": result}))
+
+def tupleType(elements):
+    return TupleTypeRef(Record({"elements": elements}))
+
+def recordType(fields):
+    return RecordTypeRef(Record({"fields": fields}))
+
+def param(name):
+    return Record({"name": name, "typeAnnotation": Nothing})
+
+def typedParam(name): return lambda typeRef: Record({"name": name, "typeAnnotation": Just(typeRef)})
+
+def var(name):
+    return Var(name)
+
+def intLit(value):
+    return IntLit(value)
+
+def floatLit(value):
+    return FloatLit(value)
+
+def stringLit(value):
+    return StringLit(value)
+
+def boolLit(value):
+    return BoolLit(value)
+
+def binOp(left): return lambda op: lambda right: BinOp(Record({"left": left, "op": op, "right": right}))
+
+def app(func): return lambda args: App(Record({"func": func, "args": args}))
+
+def _lambda_(params): return lambda body: Lambda(Record({"params": params, "body": body}))
+
+def ifExpr(cond): return lambda thenBranch: lambda elseBranch: If(Record({"cond": cond, "thenBranch": thenBranch, "elseBranch": elseBranch}))
+
+def letExpr(name): return lambda value: lambda body: Let(Record({"name": name, "value": value, "body": body}))
+
+def matchExpr(scrutinee): return lambda cases: Match(Record({"scrutinee": scrutinee, "cases": cases}))
+
+def matchCase(pattern): return lambda body: Record({"pattern": pattern, "body": body, "guard": Nothing})
+
+def matchCaseWithGuard(pattern): return lambda body: lambda guard: Record({"pattern": pattern, "body": body, "guard": Just(guard)})
+
+def listLit(elements):
+    return ListLit(elements)
+
+def tupleLit(elements):
+    return TupleLit(elements)
+
+def recordLit(fields):
+    return RecordLit(fields)
+
+def recordField(name): return lambda value: Record({"name": name, "value": value})
+
+def fieldAccess(expr): return lambda field: FieldAccess(Record({"expr": expr, "field": field}))
+
+def defDecl(name): return lambda params: lambda body: DefDecl(Record({"name": name, "params": params, "body": body, "returnType": Nothing, "isExported": False, "exportName": Nothing}))
+
+def typeDecl(name): return lambda params: lambda constructors: TypeDecl(Record({"name": name, "params": params, "constructors": constructors, "isRecord": False, "recordFields": [], "isGadt": False}))
+
+def constructor(name): return lambda fields: Record({"name": name, "fields": fields})
+
+def importDecl(module):
+    return ImportDecl(Record({"module": module, "alias": Nothing, "exposing": Nothing, "isPython": False}))
+
+def pythonImport(module):
+    return ImportDecl(Record({"module": module, "alias": Nothing, "exposing": Nothing, "isPython": True}))
+
+emptyModule = Record({"name": Nothing, "declarations": []})
+
+def addDecl(decl): return lambda mod: Record({**mod, "declarations": mod.declarations + [decl]})
+
+def setModuleName(name): return lambda mod: Record({**mod, "name": Just(name)})

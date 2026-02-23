@@ -54,6 +54,7 @@ class CodeGenerator:
         lines = [
             "from __future__ import annotations",
             "from stdlib import String, List, Dict, Set, Maybe, Result, Just, Nothing, Ok, Err, Record",
+            "from stdlib import reverse, _not_",
         ]
         for decl in module.declarations:
             lines.append(self._gen_decl(decl))
@@ -70,15 +71,17 @@ class CodeGenerator:
 
     def _gen_def_decl(self, decl: ast.DefDecl) -> str:
         safe_name = self._safe_name(decl.name)
-        params_str = ", ".join(self._safe_name(p.name) for p in decl.params)
         body_code = self._gen_expr(decl.body)
 
-        if len(decl.params) > 1:
+        if len(decl.params) == 0:
+            func_def = f"{safe_name} = {body_code}"
+        elif len(decl.params) > 1:
             inner_body = body_code
             for param in reversed(decl.params[1:]):
                 inner_body = f"lambda {self._safe_name(param.name)}: {inner_body}"
             func_def = f"def {safe_name}({self._safe_name(decl.params[0].name)}): return {inner_body}"
         else:
+            params_str = ", ".join(self._safe_name(p.name) for p in decl.params)
             func_def = f"def {safe_name}({params_str}):\n    return {body_code}"
 
         if decl.is_exported:
@@ -104,19 +107,26 @@ class CodeGenerator:
     def _gen_sum_type(self, decl: ast.TypeDecl) -> str:
         lines = ["from dataclasses import dataclass", "from typing import Union", ""]
         for ctor in decl.constructors:
-            lines.append("@dataclass")
             if ctor.fields:
-                fields_str = ", ".join(self._gen_type_ref(f) for f in ctor.fields)
+                lines.append("@dataclass")
                 lines.append(f"class {ctor.name}:")
                 for i, field_type in enumerate(ctor.fields):
                     type_str = self._gen_type_ref(field_type)
                     lines.append(f"    _field{i}: {type_str}")
+                lines.append("")
             else:
                 lines.append(f"class {ctor.name}:")
-                lines.append("    pass")
-            lines.append("")
+                lines.append("    _instance = None")
+                lines.append("    def __new__(cls):")
+                lines.append("        if cls._instance is None:")
+                lines.append("            cls._instance = super().__new__(cls)")
+                lines.append("        return cls._instance")
+                lines.append("")
         ctor_names = [c.name for c in decl.constructors]
         lines.append(f"{decl.name} = Union[{', '.join(ctor_names)}]")
+        for ctor in decl.constructors:
+            if not ctor.fields:
+                lines.append(f"{ctor.name} = {ctor.name}()")
         return "\n".join(lines)
 
     def _gen_import_decl(self, decl: ast.ImportDecl) -> str:
@@ -133,7 +143,7 @@ class CodeGenerator:
                 else:
                     names.append(name)
             return f"from {module} import {', '.join(names)}"
-        return f"import {module}"
+        return f"from {module} import *"
 
     def _gen_type_ref(self, type_ref: ast.TypeRef) -> str:
         if isinstance(type_ref, ast.SimpleTypeRef):
@@ -268,11 +278,11 @@ class CodeGenerator:
         return f"(lambda __let_val: {body_code} if {pattern_check} else None)({value_code})"
 
     def _gen_let_func(self, expr: ast.LetFunc) -> str:
+        import re
+
         safe_name = self._safe_name(expr.name)
         value_code = self._gen_expr(expr.value)
         body_code = self._gen_expr(expr.body)
-
-        import re
 
         pattern = r"\b" + re.escape(expr.name) + r"\b"
         is_recursive = bool(re.search(pattern, value_code))
@@ -281,12 +291,15 @@ class CodeGenerator:
         for param in reversed(expr.params):
             curried_lambda = f"lambda {self._safe_name(param.name)}: {curried_lambda}"
 
+        # Replace function name references in body_code with safe_name
+        body_code_with_safe_name = re.sub(pattern, safe_name, body_code)
+
         if is_recursive:
             value_code_with_cell = re.sub(pattern, "__cell[0]", curried_lambda)
             body_code_with_cell = re.sub(pattern, "__cell[0]", body_code)
             return f"(lambda __cell: (__cell.__setitem__(0, ({value_code_with_cell})) or {body_code_with_cell}))([None])"
         else:
-            return f"(lambda {safe_name}: {body_code})({curried_lambda})"
+            return f"(lambda {safe_name}: {body_code_with_safe_name})({curried_lambda})"
 
     def _gen_match(self, expr: ast.Match) -> str:
         scrutinee_code = self._gen_expr(expr.scrutinee)

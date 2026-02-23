@@ -327,6 +327,46 @@ class Parser:
             return self.tokens[-1]
         return self.tokens[self.pos + 1]
 
+    def _peek_n(self, n: int) -> Token:
+        if self.pos + n >= len(self.tokens):
+            return self.tokens[-1]
+        return self.tokens[self.pos + n]
+
+    def _is_binding_pattern(self) -> bool:
+        """Check if current position starts a new let binding pattern.
+        
+        A binding pattern is: IDENT followed by optional IDENTs (params) and then EQUALS.
+        Examples:
+        - name = ...        (simple binding)
+        - name param = ...  (function binding)
+        """
+        if not self._check(TokenType.IDENT):
+            return False
+        # Get the line number of the first IDENT
+        first_token = self._current()
+        if not hasattr(first_token, 'span') or not first_token.span:
+            return False
+        first_line = first_token.span.line
+        
+        idx = 1
+        while self._peek_n(idx).type == TokenType.IDENT:
+            # Check if this IDENT is on the same line
+            peek_token = self._peek_n(idx)
+            if hasattr(peek_token, 'span') and peek_token.span:
+                if peek_token.span.line != first_line:
+                    # Different line - this is not a binding pattern
+                    return False
+            idx += 1
+        
+        # Check if the token after all IDENTs is EQUALS and on the same line
+        equals_token = self._peek_n(idx)
+        if hasattr(equals_token, 'span') and equals_token.span:
+            if equals_token.span.line != first_line:
+                return False
+        
+        # This is a binding pattern if we see IDENT followed by IDENT(s) and then EQUALS
+        return equals_token.type == TokenType.EQUALS
+
     def _parse_import(self) -> ast.ImportDecl:
         is_python = False
 
@@ -546,11 +586,15 @@ class Parser:
 
                 if self._match(TokenType.KW_LET):
                     continue
-                if (
-                    self._check(TokenType.IDENT)
-                    and self._peek().type == TokenType.EQUALS
-                ):
-                    continue
+                # Check for next binding: IDENT followed by IDENT (function params) or EQUALS
+                if self._check(TokenType.IDENT):
+                    # Look ahead to see if this is a new binding
+                    next_pos = self.pos + 1
+                    if next_pos < len(self.tokens):
+                        next_token = self.tokens[next_pos]
+                        # Continue if: IDENT IDENT (function) or IDENT EQUALS (value)
+                        if next_token.type in (TokenType.IDENT, TokenType.EQUALS):
+                            continue
                 if self._check(TokenType.LPAREN):
                     continue
                 break
@@ -681,11 +725,15 @@ class Parser:
 
                 if self._match(TokenType.KW_LET):
                     continue
-                if (
-                    self._check(TokenType.IDENT)
-                    and self._peek().type == TokenType.EQUALS
-                ):
-                    continue
+                # Check for next binding: IDENT followed by IDENT (function params) or EQUALS
+                if self._check(TokenType.IDENT):
+                    # Look ahead to see if this is a new binding
+                    next_pos = self.pos + 1
+                    if next_pos < len(self.tokens):
+                        next_token = self.tokens[next_pos]
+                        # Continue if: IDENT IDENT (function) or IDENT EQUALS (value)
+                        if next_token.type in (TokenType.IDENT, TokenType.EQUALS):
+                            continue
                 if self._check(TokenType.LPAREN):
                     continue
                 break
@@ -985,6 +1033,8 @@ class Parser:
                     self.pos = saved_pos
                     break
             elif self._check(TokenType.IDENT) and self._peek().type == TokenType.EQUALS:
+                break
+            elif self._is_binding_pattern():
                 break
             elif self._is_pattern_start() and self._peek().type == TokenType.ARROW:
                 break
