@@ -538,6 +538,12 @@ class Parser:
 
     def _parse_let(self) -> ast.Expr:
         if self._match(TokenType.KW_LET):
+            # Check for 'let rec' - recursive binding
+            is_recursive = False
+            if self._check(TokenType.IDENT) and str(self._current().value) == "rec":
+                self.pos += 1  # consume 'rec'
+                is_recursive = True
+
             bindings = []
             while True:
                 if self._check(TokenType.LPAREN):
@@ -559,7 +565,7 @@ class Parser:
                     if params:
                         bindings.append(
                             ast.LetFunc(
-                                name=name, params=params, value=value, body=None
+                                name=name, params=params, value=value, body=None, is_recursive=is_recursive
                             )
                         )
                     else:
@@ -578,7 +584,7 @@ class Parser:
                     if params:
                         bindings.append(
                             ast.LetFunc(
-                                name=name, params=params, value=value, body=None
+                                name=name, params=params, value=value, body=None, is_recursive=is_recursive
                             )
                         )
                     else:
@@ -698,7 +704,7 @@ class Parser:
                     if params:
                         bindings.append(
                             ast.LetFunc(
-                                name=name, params=params, value=value, body=None
+                                name=name, params=params, value=value, body=None, is_recursive=is_recursive
                             )
                         )
                     else:
@@ -717,7 +723,7 @@ class Parser:
                     if params:
                         bindings.append(
                             ast.LetFunc(
-                                name=name, params=params, value=value, body=None
+                                name=name, params=params, value=value, body=None, is_recursive=is_recursive
                             )
                         )
                     else:
@@ -912,6 +918,10 @@ class Parser:
             if name_str and name_str[0].isupper():
                 args = []
                 while self._is_pattern_start():
+                    args.append(self._parse_atom_pattern())
+                    # Stop if next token is ARROW (start of new case)
+                    if self._peek().type == TokenType.ARROW:
+                        break
                     if (
                         self._check(TokenType.IDENT)
                         and self._peek().type == TokenType.EQUALS
@@ -922,7 +932,6 @@ class Parser:
                         and self._peek().type == TokenType.DOT
                     ):
                         break
-                    args.append(self._parse_atom_pattern())
                 return ast.ConstructorPattern(name=name, args=args)
             return ast.VarPattern(name=name)
 
@@ -1035,6 +1044,12 @@ class Parser:
             elif self._check(TokenType.IDENT) and self._peek().type == TokenType.EQUALS:
                 break
             elif self._is_binding_pattern():
+                break
+            # Check for: IDENT IDENT -> (constructor pattern with args followed by ARROW)
+            # e.g., "Ok value ->" where Ok is uppercase constructor
+            elif (self._check(TokenType.IDENT) and str(self._current().value)[0].isupper()
+                  and self._peek().type == TokenType.IDENT
+                  and self._peek_n(2).type == TokenType.ARROW):
                 break
             elif self._is_pattern_start() and self._peek().type == TokenType.ARROW:
                 break

@@ -211,6 +211,7 @@ class LetFunc(Expr):
     params: list[Param]
     value: Expr
     body: Expr
+    is_recursive: bool = False
 
 
 @dataclass

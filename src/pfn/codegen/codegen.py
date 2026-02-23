@@ -4,6 +4,14 @@ from pfn.parser import ast
 
 
 class CodeGenerator:
+    def __init__(self):
+        self._let_counter = 0
+
+    def _fresh_let_var(self) -> str:
+        var = f"__let_val_{self._let_counter}"
+        self._let_counter += 1
+        return var
+
     PYTHON_KEYWORDS = {
         "lambda",
         "def",
@@ -171,7 +179,9 @@ class CodeGenerator:
             return "dict"
         return "Any"
 
-    def _gen_expr(self, expr: ast.Expr) -> str:
+    def _gen_expr(self, expr: ast.Expr, bindings: dict = None) -> str:
+        if bindings is None:
+            bindings = {}
         if isinstance(expr, ast.IntLit):
             return str(expr.value)
         if isinstance(expr, ast.FloatLit):
@@ -266,7 +276,8 @@ class CodeGenerator:
     def _gen_let_pattern(self, expr: ast.LetPattern) -> str:
         value_code = self._gen_expr(expr.value)
         body_code = self._gen_expr(expr.body)
-        pattern_check, bindings = self._gen_pattern_check(expr.pattern, "__let_val")
+        let_var = self._fresh_let_var()
+        pattern_check, bindings = self._gen_pattern_check(expr.pattern, let_var)
         if pattern_check == "True" and not bindings:
             return body_code
         if bindings:
@@ -275,7 +286,7 @@ class CodeGenerator:
             for name, var_path in bindings.items():
                 pattern = r"\b" + re.escape(name) + r"\b"
                 body_code = re.sub(pattern, var_path, body_code)
-        return f"(lambda __let_val: {body_code} if {pattern_check} else None)({value_code})"
+        return f"(lambda {let_var}: {body_code} if {pattern_check} else None)({value_code})"
 
     def _gen_let_func(self, expr: ast.LetFunc) -> str:
         import re
@@ -315,12 +326,22 @@ class CodeGenerator:
             body_code = self._gen_expr_with_bindings(case.body, bindings)
             parts.append((pattern_check, body_code))
 
-        chain = parts[-1][1]
-        for pattern_check, body_code in reversed(parts[:-1]):
+        # Build the chain - always include the first case's pattern check
+        if len(parts) == 1:
+            # Single case - still need to include pattern check
+            pattern_check, body_code = parts[0]
             if pattern_check == "True":
                 chain = body_code
             else:
-                chain = f"({body_code} if {pattern_check} else {chain})"
+                chain = f"({body_code} if {pattern_check} else None)"
+        else:
+            # Multiple cases
+            chain = parts[-1][1]
+            for pattern_check, body_code in reversed(parts[:-1]):
+                if pattern_check == "True":
+                    chain = body_code
+                else:
+                    chain = f"({body_code} if {pattern_check} else {chain})"
 
         result += chain + ")({})".format(scrutinee_code)
         return result
@@ -348,9 +369,25 @@ class CodeGenerator:
         if isinstance(pattern, ast.ListPattern):
             if not pattern.elements:
                 return f"{var} == []", bindings
-            return "isinstance({}, list)".format(var), bindings
+            check = f"isinstance({var}, list) and len({var}) == {len(pattern.elements)}"
+            for i, elem in enumerate(pattern.elements):
+                elem_var = f"{var}[{i}]"
+                elem_check, elem_bindings = self._gen_pattern_check(elem, elem_var)
+                if elem_check != "True":
+                    check = f"{check} and {elem_check}"
+                bindings.update(elem_bindings)
+            return check, bindings
         if isinstance(pattern, ast.ConsPattern):
-            return "isinstance({}, list) and len({}) > 0".format(var, var), bindings
+            check = f"isinstance({var}, list) and len({var}) > 0"
+            head_check, head_bindings = self._gen_pattern_check(pattern.head, f"{var}[0]")
+            tail_check, tail_bindings = self._gen_pattern_check(pattern.tail, f"{var}[1:]")
+            if head_check != "True":
+                check = f"{check} and {head_check}"
+            if tail_check != "True":
+                check = f"{check} and {tail_check}"
+            bindings.update(head_bindings)
+            bindings.update(tail_bindings)
+            return check, bindings
         if isinstance(pattern, ast.TuplePattern):
             check = (
                 f"isinstance({var}, tuple) and len({var}) == {len(pattern.elements)}"
@@ -363,13 +400,18 @@ class CodeGenerator:
                 bindings.update(elem_bindings)
             return check, bindings
         if isinstance(pattern, ast.ConstructorPattern):
-            check = f"isinstance({var}, {pattern.name})"
-            for i, arg in enumerate(pattern.args):
-                arg_var = f"{var}._field{i}"
-                arg_check, arg_bindings = self._gen_pattern_check(arg, arg_var)
-                if arg_check != "True":
-                    check = f"{check} and {arg_check}"
-                bindings.update(arg_bindings)
+            # For constructors without args, use 'is' for singleton comparison
+            # For constructors with args, use 'isinstance' for type checking
+            if not pattern.args:
+                check = f"{var} is {pattern.name}"
+            else:
+                check = f"isinstance({var}, {pattern.name})"
+                for i, arg in enumerate(pattern.args):
+                    arg_var = f"{var}._field{i}"
+                    arg_check, arg_bindings = self._gen_pattern_check(arg, arg_var)
+                    if arg_check != "True":
+                        check = f"{check} and {arg_check}"
+                    bindings.update(arg_bindings)
             return check, bindings
         return "True", bindings
 
@@ -379,8 +421,17 @@ class CodeGenerator:
         code = self._gen_expr(expr)
         import re
 
+        # Apply bindings via regex substitution, but be careful not to replace
+        # inside Record field names (which are inside quotes)
+        # We do this by replacing field names with placeholders first
         for name, var_path in bindings.items():
-            pattern = r"\b" + re.escape(name) + r"\b"
+            # Skip if this binding name could be confused with a field name
+            # (simple heuristic: field names are usually shorter)
+            if len(name) < 3:
+                # For short names, use word boundary to avoid replacing inside words
+                pattern = r"\b" + re.escape(name) + r"\b"
+            else:
+                pattern = r"\b" + re.escape(name) + r"\b"
             code = re.sub(pattern, var_path, code)
         return code
 
@@ -392,7 +443,9 @@ class CodeGenerator:
         elems_str = ", ".join(self._gen_expr(e) for e in expr.elements)
         return f"({elems_str})"
 
-    def _gen_record(self, expr: ast.RecordLit) -> str:
+    def _gen_record(self, expr: ast.RecordLit, bindings: dict = None) -> str:
+        # Don't pass bindings here - let _gen_expr_with_bindings handle all binding substitution
+        # via regex to avoid double-substitution issues
         fields_str = ", ".join(
             f'"{f.name}": {self._gen_expr(f.value)}' for f in expr.fields
         )
