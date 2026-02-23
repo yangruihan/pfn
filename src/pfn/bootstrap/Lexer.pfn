@@ -48,11 +48,14 @@ def peekOffset(offset: Int)(state: LexerState) : Char =
 
 -- Advance position and return character
 def advance(state: LexerState) : (Char, LexerState) =
-  let char = String.unsafeAt(state.pos)(state.source)
-      newState = if char == '\n'
-        then { state with pos = state.pos + 1, line = state.line + 1, column = 1 }
-        else { state with pos = state.pos + 1, column = state.column + 1 }
-  in (char, newState)
+  if atEnd(state)
+    then ('\0', state)
+    else
+      let char = String.unsafeAt(state.pos)(state.source)
+          newState = if char == '\n'
+            then { state with pos = state.pos + 1, line = state.line + 1, column = 1 }
+            else { state with pos = state.pos + 1, column = state.column + 1 }
+      in (char, newState)
 
 -- Match expected character
 def match(expected: Char)(state: LexerState) : (Bool, LexerState) =

@@ -451,6 +451,8 @@ class Lexer:
                 char_value = "\t"
             elif escaped == "r":
                 char_value = "\r"
+            elif escaped == "0":
+                char_value = "\0"
             elif escaped == "\\":
                 char_value = "\\"
             elif escaped == "'":
