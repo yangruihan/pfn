@@ -58,8 +58,17 @@ class CodeGenerator:
     def generate(self, node: ast.Expr) -> str:
         return self._gen_expr(node)
 
-    def generate_module(self, module: ast.Module) -> str:
+    def generate_module(self, module: ast.Module, source_file: str = None) -> str:
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        source_info = f" from {source_file}" if source_file else ""
         lines = [
+            f"# ============================================================",
+            f"# AUTO-GENERATED CODE - DO NOT EDIT",
+            f"# Generated{source_info} by Pfn compiler",
+            f"# Generated at: {timestamp}",
+            f"# ============================================================",
+            "",
             "from __future__ import annotations",
             "from stdlib import String, List, Dict, Set, Maybe, Result, Just, Nothing, Ok, Err, Record",
             "from stdlib import reverse, _not_",
