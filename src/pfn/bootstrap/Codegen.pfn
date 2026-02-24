@@ -48,12 +48,13 @@ def generateParams(params: List Param) : String =
   String.join(", ", List.map(\p -> p.name, params))
 
 def generateFuncDef(name: String, params: List Param, bodyCode: String) : String =
-  match params with
-    [] -> "def " ++ name ++ "():\n    return " ++ bodyCode
-    [p] -> "def " ++ name ++ "(" ++ p.name ++ "):\n    return " ++ bodyCode
-    [first | rest] ->
-      let innerBody = generateCurriedBody(rest, bodyCode)
-      in "def " ++ name ++ "(" ++ first.name ++ "): return " ++ innerBody
+  -- Generate uncurried Python function (def f(x, y): return ...)
+  -- instead of curried lambdas (def f(x): return lambda y: ...)
+  let paramsStr = generateParams(params)
+  in if paramsStr == "" then
+    "def " ++ name ++ "():\n    return " ++ bodyCode
+  else
+    "def " ++ name ++ "(" ++ paramsStr ++ "):\n    return " ++ bodyCode
 
 def generateCurriedBody(params: List Param, body: String) : String =
   match params with
@@ -236,23 +237,24 @@ def generateMatch(data: MatchData) : String =
     in "(lambda __match_val: " ++ casesCode ++ ")(" ++ scrutineeCode ++ ")"
 
 def generateMatchCases(cases: List MatchCase, var: String) : String =
+  -- Use or-chain instead of nested ternaries for better readability
+  let casesCode = generateAllCases(cases, var, [])
+  in if List.isEmpty(casesCode) then
+    "None"
+  else if List.length(casesCode) == 1 then
+    casesCode[0]
+  else
+    -- Use or-chain - returns first truthy result
+    "(" ++ String.join(" or ", List.map(\c -> "(" ++ c ++ ")", casesCode)) ++ ")"
+
+def generateAllCases(cases: List MatchCase, var: String, acc: List String) : List String =
   match cases with
-    [] -> "None"
-    [c] ->
-      let (patternCheck, bindings) = generatePatternCheck(c.pattern, var)
-      in let bodyCode = generateExprWithBindings(c.body, bindings)
-      in if patternCheck == "True" then
-        bodyCode
-      else
-        "(" ++ bodyCode ++ " if " ++ patternCheck ++ " else None)"
+    [] -> List.reverse(acc)
     [c | rest] ->
       let (patternCheck, bindings) = generatePatternCheck(c.pattern, var)
       in let bodyCode = generateExprWithBindings(c.body, bindings)
-      in let restCode = generateMatchCases(rest, var)
-      in if patternCheck == "True" then
-        bodyCode
-      else
-        "(" ++ bodyCode ++ " if " ++ patternCheck ++ " else " ++ restCode ++ ")"
+      in let caseCode = if patternCheck == "True" then bodyCode else "(" ++ bodyCode ++ " if " ++ patternCheck ++ " else None)"
+      in generateAllCases(rest, var, [caseCode] ++ acc)
 
 def generateExprWithBindings(expr: Expr, bindings: List (String, String)) : String =
   match bindings with

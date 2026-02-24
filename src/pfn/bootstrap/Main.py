@@ -29,6 +29,6 @@ def typeCheckDecls(decls): return lambda state: (lambda __match_val: (Ok(None) i
 def compileAndPrint(source):
     return (lambda __match_val: ('Generated Python:\n' + __match_val._field0 if isinstance(__match_val, Ok) else 'Error: ' + __match_val._field0))(compile(source))
 
-example = (lambda source: compileAndPrint(source))('def add x y = x + y')
+# example = (lambda source: compileAndPrint(source))('def add x y = x + y')
 
-main = 'Pfn Bootstrap Compiler\n\n' + example
+main = 'Pfn Bootstrap Compiler'

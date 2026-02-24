@@ -91,8 +91,8 @@ class TestCodeGeneratorFunctions:
         tokens = Lexer("def add(x, y) = x + y").tokenize()
         module = Parser(tokens).parse()
         code = CodeGenerator().generate_module(module)
-        assert "def add(x):" in code
-        assert "lambda y:" in code
+        # Now generates uncurried Python function (def f(x, y): return ...)
+        assert "def add(x, y):" in code
         assert "x + y" in code
 
 
@@ -109,7 +109,8 @@ class TestCodeGeneratorLet:
         tokens = Lexer("let x = 5 in x").tokenize()
         ast = Parser(tokens).parse_expr()
         code = CodeGenerator().generate(ast)
-        assert "lambda" in code and "5" in code
+        # Now uses walrus operator (:=) instead of IIL
+        assert ":=" in code and "5" in code
 
 
 class TestCodeGeneratorList:

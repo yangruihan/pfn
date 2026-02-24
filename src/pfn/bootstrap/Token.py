@@ -569,22 +569,20 @@ BACKTICK = BACKTICK()
 NEWLINE = NEWLINE()
 EOF = EOF()
 
-from dataclasses import dataclass
+class Span(Record):
+    def __init__(self, start, end, line, column):
+        super().__init__()
+        self.start = start
+        self.end = end
+        self.line = line
+        self.column = column
 
-@dataclass
-class Span:
-    start: int
-    end: int
-    line: int
-    column: int
-
-from dataclasses import dataclass
-
-@dataclass
-class Token:
-    tokenType: TokenType
-    value: TokenValue
-    span: Span
+class Token(Record):
+    def __init__(self, tokenType, value, span):
+        super().__init__()
+        self.tokenType = tokenType
+        self.value = value
+        self.span = span
 
 from dataclasses import dataclass
 from typing import Union
@@ -620,17 +618,17 @@ keywords = Dict.fromList([('def', KW_DEF), ('let', KW_LET), ('in', KW_IN), ('if'
 def lookupKeyword(name):
     return Dict.lookup(name)(keywords)
 
-def makeSpan(start): return lambda end: lambda line: lambda column: Record({"start": start, "end": end, "line": line, "column": column})
+def makeSpan(start): return lambda end: lambda line: lambda column: Span(start, end, line, column)
 
-def token(tt): return lambda span: Record({"tokenType": tt, "value": NoValue, "span": span})
+def token(tt): return lambda span: Token(tt, NoValue, span)
 
-def stringToken(tt): return lambda value: lambda span: Record({"tokenType": tt, "value": StringValue(value), "span": span})
+def stringToken(tt): return lambda value: lambda span: Token(tt, StringValue(value), span)
 
-def intToken(value): return lambda span: Record({"tokenType": INT, "value": IntValue(value), "span": span})
+def intToken(value): return lambda span: Token(INT, IntValue(value), span)
 
-def floatToken(value): return lambda span: Record({"tokenType": FLOAT, "value": FloatValue(value), "span": span})
+def floatToken(value): return lambda span: Token(FLOAT, FloatValue(value), span)
 
-def charToken(value): return lambda span: Record({"tokenType": CHAR, "value": CharValue(value), "span": span})
+def charToken(value): return lambda span: Token(CHAR, CharValue(value), span)
 
 def tokenTypeName(tt):
     return (lambda __match_val: ('INT' if __match_val is INT else ('FLOAT' if __match_val is FLOAT else ('STRING' if __match_val is STRING else ('CHAR' if __match_val is CHAR else ('IDENT' if __match_val is IDENT else ('KW_DEF' if __match_val is KW_DEF else ('KW_LET' if __match_val is KW_LET else ('KW_IN' if __match_val is KW_IN else ('KW_IF' if __match_val is KW_IF else ('KW_THEN' if __match_val is KW_THEN else ('KW_ELSE' if __match_val is KW_ELSE else ('KW_MATCH' if __match_val is KW_MATCH else ('KW_WITH' if __match_val is KW_WITH else ('KW_TYPE' if __match_val is KW_TYPE else ('KW_INTERFACE' if __match_val is KW_INTERFACE else ('KW_IMPL' if __match_val is KW_IMPL else ('KW_IMPORT' if __match_val is KW_IMPORT else ('KW_EXPORT' if __match_val is KW_EXPORT else ('KW_MODULE' if __match_val is KW_MODULE else ('KW_AS' if __match_val is KW_AS else ('KW_EFFECT' if __match_val is KW_EFFECT else ('KW_HANDLER' if __match_val is KW_HANDLER else ('KW_HANDLE' if __match_val is KW_HANDLE else ('KW_DO' if __match_val is KW_DO else ('KW_FORALL' if __match_val is KW_FORALL else ('KW_EXISTS' if __match_val is KW_EXISTS else ('KW_DATA' if __match_val is KW_DATA else ('KW_FAMILY' if __match_val is KW_FAMILY else ('KW_WHERE' if __match_val is KW_WHERE else ('KW_FN' if __match_val is KW_FN else ('KW_GADT' if __match_val is KW_GADT else ('TRUE' if __match_val is TRUE else ('FALSE' if __match_val is FALSE else ('PLUS' if __match_val is PLUS else ('MINUS' if __match_val is MINUS else ('STAR' if __match_val is STAR else ('SLASH' if __match_val is SLASH else ('PERCENT' if __match_val is PERCENT else ('ARROW' if __match_val is ARROW else ('FAT_ARROW' if __match_val is FAT_ARROW else ('DOUBLE_COLON' if __match_val is DOUBLE_COLON else ('EQUALS' if __match_val is EQUALS else ('EQ' if __match_val is EQ else ('NEQ' if __match_val is NEQ else ('LT' if __match_val is LT else ('LE' if __match_val is LE else ('GT' if __match_val is GT else ('GE' if __match_val is GE else ('PIPE' if __match_val is PIPE else ('DOUBLE_PIPE' if __match_val is DOUBLE_PIPE else ('AMP' if __match_val is AMP else ('DOUBLE_AMP' if __match_val is DOUBLE_AMP else ('LEFT_ARROW' if __match_val is LEFT_ARROW else ('DOUBLE_PLUS' if __match_val is DOUBLE_PLUS else ('BANG' if __match_val is BANG else ('AT' if __match_val is AT else ('LPAREN' if __match_val is LPAREN else ('RPAREN' if __match_val is RPAREN else ('LBRACKET' if __match_val is LBRACKET else ('RBRACKET' if __match_val is RBRACKET else ('LBRACE' if __match_val is LBRACE else ('RBRACE' if __match_val is RBRACE else ('COMMA' if __match_val is COMMA else ('COLON' if __match_val is COLON else ('DOT' if __match_val is DOT else ('UNDERSCORE' if __match_val is UNDERSCORE else ('SEMICOLON' if __match_val is SEMICOLON else ('BACKTICK' if __match_val is BACKTICK else ('NEWLINE' if __match_val is NEWLINE else 'EOF'))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))(tt)

@@ -85,12 +85,9 @@ class CodeGenerator:
 
         if len(decl.params) == 0:
             func_def = f"{safe_name} = {body_code}"
-        elif len(decl.params) > 1:
-            inner_body = body_code
-            for param in reversed(decl.params[1:]):
-                inner_body = f"lambda {self._safe_name(param.name)}: {inner_body}"
-            func_def = f"def {safe_name}({self._safe_name(decl.params[0].name)}): return {inner_body}"
         else:
+            # Generate uncurried Python function (def f(x, y): return ...)
+            # instead of curried lambdas (def f(x): return lambda y: ...)
             params_str = ", ".join(self._safe_name(p.name) for p in decl.params)
             func_def = f"def {safe_name}({params_str}):\n    return {body_code}"
 
@@ -273,7 +270,8 @@ class CodeGenerator:
         value_code = self._gen_expr(expr.value)
         body_code = self._gen_expr(expr.body)
         safe_name = self._safe_name(expr.name)
-        return f"(lambda {safe_name}: {body_code})({value_code})"
+        # Use walrus operator (:=) instead of IIL for better readability
+        return f"(({body_code}) if ({safe_name} := ({value_code})) is not None else None)"
 
     def _gen_let_pattern(self, expr: ast.LetPattern) -> str:
         value_code = self._gen_expr(expr.value)

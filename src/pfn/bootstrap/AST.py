@@ -27,38 +27,33 @@ class RecordTypeRef:
 
 TypeRef = Union[SimpleTypeRef, FunTypeRef, TupleTypeRef, RecordTypeRef]
 
-from dataclasses import dataclass
+class SimpleTypeRefData(Record):
+    def __init__(self, name, args):
+        super().__init__()
+        self.name = name
+        self.args = args
 
-@dataclass
-class SimpleTypeRefData:
-    name: str
-    args: list[TypeRef]
+class FunTypeRefData(Record):
+    def __init__(self, param, result):
+        super().__init__()
+        self.param = param
+        self.result = result
 
-from dataclasses import dataclass
+class TupleTypeRefData(Record):
+    def __init__(self, elements):
+        super().__init__()
+        self.elements = elements
 
-@dataclass
-class FunTypeRefData:
-    param: TypeRef
-    result: TypeRef
+class RecordTypeRefData(Record):
+    def __init__(self, fields):
+        super().__init__()
+        self.fields = fields
 
-from dataclasses import dataclass
-
-@dataclass
-class TupleTypeRefData:
-    elements: list[TypeRef]
-
-from dataclasses import dataclass
-
-@dataclass
-class RecordTypeRefData:
-    fields: list[tuple[str, TypeRef]]
-
-from dataclasses import dataclass
-
-@dataclass
-class Param:
-    name: str
-    typeAnnotation: Maybe[TypeRef]
+class Param(Record):
+    def __init__(self, name, typeAnnotation):
+        super().__init__()
+        self.name = name
+        self.typeAnnotation = typeAnnotation
 
 from dataclasses import dataclass
 from typing import Union
@@ -117,19 +112,17 @@ class ConstructorPattern:
 Pattern = Union[IntPattern, FloatPattern, StringPattern, CharPattern, BoolPattern, VarPattern, WildcardPattern, ConsPattern, ListPattern, TuplePattern, RecordPattern, ConstructorPattern]
 WildcardPattern = WildcardPattern()
 
-from dataclasses import dataclass
+class ConsPatternData(Record):
+    def __init__(self, head, tail):
+        super().__init__()
+        self.head = head
+        self.tail = tail
 
-@dataclass
-class ConsPatternData:
-    head: Pattern
-    tail: Pattern
-
-from dataclasses import dataclass
-
-@dataclass
-class ConstructorPatternData:
-    name: str
-    args: list[Pattern]
+class ConstructorPatternData(Record):
+    def __init__(self, name, args):
+        super().__init__()
+        self.name = name
+        self.args = args
 
 from dataclasses import dataclass
 from typing import Union
@@ -240,141 +233,123 @@ class PerformExpr:
 Expr = Union[IntLit, FloatLit, StringLit, CharLit, BoolLit, UnitLit, Var, Lambda, App, BinOp, UnaryOp, If, Let, LetFunc, Match, DoNotation, ListLit, TupleLit, RecordLit, FieldAccess, RecordUpdate, IndexAccess, Slice, HandleExpr, PerformExpr]
 UnitLit = UnitLit()
 
-from dataclasses import dataclass
+class LambdaData(Record):
+    def __init__(self, params, body):
+        super().__init__()
+        self.params = params
+        self.body = body
 
-@dataclass
-class LambdaData:
-    params: list[Param]
-    body: Expr
+class AppData(Record):
+    def __init__(self, func, args):
+        super().__init__()
+        self.func = func
+        self.args = args
 
-from dataclasses import dataclass
+class BinOpData(Record):
+    def __init__(self, left, op, right):
+        super().__init__()
+        self.left = left
+        self.op = op
+        self.right = right
 
-@dataclass
-class AppData:
-    func: Expr
-    args: list[Expr]
+class UnaryOpData(Record):
+    def __init__(self, op, operand):
+        super().__init__()
+        self.op = op
+        self.operand = operand
 
-from dataclasses import dataclass
+class IfData(Record):
+    def __init__(self, cond, thenBranch, elseBranch):
+        super().__init__()
+        self.cond = cond
+        self.thenBranch = thenBranch
+        self.elseBranch = elseBranch
 
-@dataclass
-class BinOpData:
-    left: Expr
-    op: str
-    right: Expr
+class LetData(Record):
+    def __init__(self, name, value, body):
+        super().__init__()
+        self.name = name
+        self.value = value
+        self.body = body
 
-from dataclasses import dataclass
+class LetFuncData(Record):
+    def __init__(self, name, params, value, body):
+        super().__init__()
+        self.name = name
+        self.params = params
+        self.value = value
+        self.body = body
 
-@dataclass
-class UnaryOpData:
-    op: str
-    operand: Expr
+class MatchData(Record):
+    def __init__(self, scrutinee, cases):
+        super().__init__()
+        self.scrutinee = scrutinee
+        self.cases = cases
 
-from dataclasses import dataclass
+class MatchCase(Record):
+    def __init__(self, pattern, body, guard):
+        super().__init__()
+        self.pattern = pattern
+        self.body = body
+        self.guard = guard
 
-@dataclass
-class IfData:
-    cond: Expr
-    thenBranch: Expr
-    elseBranch: Expr
+class DoNotationData(Record):
+    def __init__(self, bindings, body):
+        super().__init__()
+        self.bindings = bindings
+        self.body = body
 
-from dataclasses import dataclass
+class DoBinding(Record):
+    def __init__(self, name, value):
+        super().__init__()
+        self.name = name
+        self.value = value
 
-@dataclass
-class LetData:
-    name: str
-    value: Expr
-    body: Expr
+class RecordField(Record):
+    def __init__(self, name, value):
+        super().__init__()
+        self.name = name
+        self.value = value
 
-from dataclasses import dataclass
+class FieldAccessData(Record):
+    def __init__(self, expr, field):
+        super().__init__()
+        self.expr = expr
+        self.field = field
 
-@dataclass
-class LetFuncData:
-    name: str
-    params: list[Param]
-    value: Expr
-    body: Expr
+class RecordUpdateData(Record):
+    def __init__(self, record, updates):
+        super().__init__()
+        self.record = record
+        self.updates = updates
 
-from dataclasses import dataclass
+class IndexAccessData(Record):
+    def __init__(self, expr, index):
+        super().__init__()
+        self.expr = expr
+        self.index = index
 
-@dataclass
-class MatchData:
-    scrutinee: Expr
-    cases: list[MatchCase]
+class SliceData(Record):
+    def __init__(self, expr, start, end, step):
+        super().__init__()
+        self.expr = expr
+        self.start = start
+        self.end = end
+        self.step = step
 
-from dataclasses import dataclass
+class HandleExprData(Record):
+    def __init__(self, expr, handlerCases, handlerName):
+        super().__init__()
+        self.expr = expr
+        self.handlerCases = handlerCases
+        self.handlerName = handlerName
 
-@dataclass
-class MatchCase:
-    pattern: Pattern
-    body: Expr
-    guard: Maybe[Expr]
-
-from dataclasses import dataclass
-
-@dataclass
-class DoNotationData:
-    bindings: list[DoBinding]
-    body: Expr
-
-from dataclasses import dataclass
-
-@dataclass
-class DoBinding:
-    name: str
-    value: Expr
-
-from dataclasses import dataclass
-
-@dataclass
-class RecordField:
-    name: str
-    value: Expr
-
-from dataclasses import dataclass
-
-@dataclass
-class FieldAccessData:
-    expr: Expr
-    field: str
-
-from dataclasses import dataclass
-
-@dataclass
-class RecordUpdateData:
-    record: Expr
-    updates: list[RecordField]
-
-from dataclasses import dataclass
-
-@dataclass
-class IndexAccessData:
-    expr: Expr
-    index: Expr
-
-from dataclasses import dataclass
-
-@dataclass
-class SliceData:
-    expr: Expr
-    start: Maybe[Expr]
-    end: Maybe[Expr]
-    step: Maybe[Expr]
-
-from dataclasses import dataclass
-
-@dataclass
-class HandleExprData:
-    expr: Expr
-    handlerCases: list[HandlerCase]
-    handlerName: Maybe[str]
-
-from dataclasses import dataclass
-
-@dataclass
-class PerformExprData:
-    effectName: str
-    opName: str
-    args: list[Expr]
+class PerformExprData(Record):
+    def __init__(self, effectName, opName, args):
+        super().__init__()
+        self.effectName = effectName
+        self.opName = opName
+        self.args = args
 
 from dataclasses import dataclass
 from typing import Union
@@ -417,153 +392,137 @@ class HandlerDecl:
 
 Decl = Union[DefDecl, TypeDecl, TypeAliasDecl, ImportDecl, ExportDecl, InterfaceDecl, ImplDecl, EffectDecl, HandlerDecl]
 
-from dataclasses import dataclass
+class DefDeclData(Record):
+    def __init__(self, name, params, body, returnType, isExported, exportName):
+        super().__init__()
+        self.name = name
+        self.params = params
+        self.body = body
+        self.returnType = returnType
+        self.isExported = isExported
+        self.exportName = exportName
 
-@dataclass
-class DefDeclData:
-    name: str
-    params: list[Param]
-    body: Expr
-    returnType: Maybe[TypeRef]
-    isExported: bool
-    exportName: Maybe[str]
+class TypeDeclData(Record):
+    def __init__(self, name, params, constructors, isRecord, recordFields, isGadt):
+        super().__init__()
+        self.name = name
+        self.params = params
+        self.constructors = constructors
+        self.isRecord = isRecord
+        self.recordFields = recordFields
+        self.isGadt = isGadt
 
-from dataclasses import dataclass
+class Constructor(Record):
+    def __init__(self, name, fields):
+        super().__init__()
+        self.name = name
+        self.fields = fields
 
-@dataclass
-class TypeDeclData:
-    name: str
-    params: list[str]
-    constructors: list[Constructor]
-    isRecord: bool
-    recordFields: list[tuple[str, TypeRef]]
-    isGadt: bool
+class GADTConstructor(Record):
+    def __init__(self, name, params, resultType):
+        super().__init__()
+        self.name = name
+        self.params = params
+        self.resultType = resultType
 
-from dataclasses import dataclass
+class TypeAliasDeclData(Record):
+    def __init__(self, name, params, typeRef):
+        super().__init__()
+        self.name = name
+        self.params = params
+        self.typeRef = typeRef
 
-@dataclass
-class Constructor:
-    name: str
-    fields: list[TypeRef]
+class ImportDeclData(Record):
+    def __init__(self, module, alias, exposing, isPython):
+        super().__init__()
+        self.module = module
+        self.alias = alias
+        self.exposing = exposing
+        self.isPython = isPython
 
-from dataclasses import dataclass
+class ExportDeclData(Record):
+    def __init__(self, names):
+        super().__init__()
+        self.names = names
 
-@dataclass
-class GADTConstructor:
-    name: str
-    params: list[TypeRef]
-    resultType: TypeRef
+class InterfaceDeclData(Record):
+    def __init__(self, name, params, methods, superclasses):
+        super().__init__()
+        self.name = name
+        self.params = params
+        self.methods = methods
+        self.superclasses = superclasses
 
-from dataclasses import dataclass
+class InterfaceMethod(Record):
+    def __init__(self, name, typ):
+        super().__init__()
+        self.name = name
+        self.typ = typ
 
-@dataclass
-class TypeAliasDeclData:
-    name: str
-    params: list[str]
-    typeRef: TypeRef
+class ImplDeclData(Record):
+    def __init__(self, className, typeRef, methods):
+        super().__init__()
+        self.className = className
+        self.typeRef = typeRef
+        self.methods = methods
 
-from dataclasses import dataclass
+class ImplMethod(Record):
+    def __init__(self, name, params, body):
+        super().__init__()
+        self.name = name
+        self.params = params
+        self.body = body
 
-@dataclass
-class ImportDeclData:
-    module: str
-    alias: Maybe[str]
-    exposing: Maybe[list[str]]
-    isPython: bool
+class EffectDeclData(Record):
+    def __init__(self, name, operations):
+        super().__init__()
+        self.name = name
+        self.operations = operations
 
-from dataclasses import dataclass
+class EffectOp(Record):
+    def __init__(self, name, typ):
+        super().__init__()
+        self.name = name
+        self.typ = typ
 
-@dataclass
-class ExportDeclData:
-    names: list[str]
+class HandlerDeclData(Record):
+    def __init__(self, effectName, handlers, returnType):
+        super().__init__()
+        self.effectName = effectName
+        self.handlers = handlers
+        self.returnType = returnType
 
-from dataclasses import dataclass
+class HandlerCase(Record):
+    def __init__(self, opName, body, params, resumeParam):
+        super().__init__()
+        self.opName = opName
+        self.body = body
+        self.params = params
+        self.resumeParam = resumeParam
 
-@dataclass
-class InterfaceDeclData:
-    name: str
-    params: list[str]
-    methods: list[InterfaceMethod]
-    superclasses: list[str]
-
-from dataclasses import dataclass
-
-@dataclass
-class InterfaceMethod:
-    name: str
-    typ: TypeRef
-
-from dataclasses import dataclass
-
-@dataclass
-class ImplDeclData:
-    className: str
-    typeRef: TypeRef
-    methods: list[ImplMethod]
-
-from dataclasses import dataclass
-
-@dataclass
-class ImplMethod:
-    name: str
-    params: list[Param]
-    body: Expr
-
-from dataclasses import dataclass
-
-@dataclass
-class EffectDeclData:
-    name: str
-    operations: list[EffectOp]
-
-from dataclasses import dataclass
-
-@dataclass
-class EffectOp:
-    name: str
-    typ: TypeRef
-
-from dataclasses import dataclass
-
-@dataclass
-class HandlerDeclData:
-    effectName: str
-    handlers: list[HandlerCase]
-    returnType: Maybe[TypeRef]
-
-from dataclasses import dataclass
-
-@dataclass
-class HandlerCase:
-    opName: str
-    body: Expr
-    params: list[Param]
-    resumeParam: Maybe[str]
-
-from dataclasses import dataclass
-
-@dataclass
-class Module:
-    name: Maybe[str]
-    declarations: list[Decl]
+class Module(Record):
+    def __init__(self, name, declarations):
+        super().__init__()
+        self.name = name
+        self.declarations = declarations
 
 def simpleType(name):
-    return SimpleTypeRef(Record({"name": name, "args": []}))
+    return SimpleTypeRef(SimpleTypeRefData(name, []))
 
-def typeApp(name): return lambda args: SimpleTypeRef(Record({"name": name, "args": args}))
+def typeApp(name): return lambda args: SimpleTypeRef(SimpleTypeRefData(name, args))
 
-def funType(param): return lambda result: FunTypeRef(Record({"param": param, "result": result}))
+def funType(param): return lambda result: FunTypeRef(FunTypeRefData(param, result))
 
 def tupleType(elements):
-    return TupleTypeRef(Record({"elements": elements}))
+    return TupleTypeRef(TupleTypeRefData(elements))
 
 def recordType(fields):
-    return RecordTypeRef(Record({"fields": fields}))
+    return RecordTypeRef(RecordTypeRefData(fields))
 
 def param(name):
-    return Record({"name": name, "typeAnnotation": Nothing})
+    return Param(name, Nothing)
 
-def typedParam(name): return lambda typeRef: Record({"name": name, "typeAnnotation": Just(typeRef)})
+def typedParam(name): return lambda typeRef: Param(name, Just(typeRef))
 
 def var(name):
     return Var(name)
@@ -580,21 +539,21 @@ def stringLit(value):
 def boolLit(value):
     return BoolLit(value)
 
-def binOp(left): return lambda op: lambda right: BinOp(Record({"left": left, "op": op, "right": right}))
+def binOp(left): return lambda op: lambda right: BinOp(BinOpData(left, op, right))
 
-def app(func): return lambda args: App(Record({"func": func, "args": args}))
+def app(func): return lambda args: App(AppData(func, args))
 
-def _lambda_(params): return lambda body: Lambda(Record({"params": params, "body": body}))
+def _lambda_(params): return lambda body: Lambda(LambdaData(params, body))
 
-def ifExpr(cond): return lambda thenBranch: lambda elseBranch: If(Record({"cond": cond, "thenBranch": thenBranch, "elseBranch": elseBranch}))
+def ifExpr(cond): return lambda thenBranch: lambda elseBranch: If(IfData(cond, thenBranch, elseBranch))
 
-def letExpr(name): return lambda value: lambda body: Let(Record({"name": name, "value": value, "body": body}))
+def letExpr(name): return lambda value: lambda body: Let(LetData(name, value, body))
 
-def matchExpr(scrutinee): return lambda cases: Match(Record({"scrutinee": scrutinee, "cases": cases}))
+def matchExpr(scrutinee): return lambda cases: Match(MatchData(scrutinee, cases))
 
-def matchCase(pattern): return lambda body: Record({"pattern": pattern, "body": body, "guard": Nothing})
+def matchCase(pattern): return lambda body: MatchCase(pattern, body, Nothing)
 
-def matchCaseWithGuard(pattern): return lambda body: lambda guard: Record({"pattern": pattern, "body": body, "guard": Just(guard)})
+def matchCaseWithGuard(pattern): return lambda body: lambda guard: MatchCase(pattern, body, Just(guard))
 
 def listLit(elements):
     return ListLit(elements)
@@ -605,23 +564,23 @@ def tupleLit(elements):
 def recordLit(fields):
     return RecordLit(fields)
 
-def recordField(name): return lambda value: Record({"name": name, "value": value})
+def recordField(name): return lambda value: DoBinding(name, value)
 
-def fieldAccess(expr): return lambda field: FieldAccess(Record({"expr": expr, "field": field}))
+def fieldAccess(expr): return lambda field: FieldAccess(FieldAccessData(expr, field))
 
-def defDecl(name): return lambda params: lambda body: DefDecl(Record({"name": name, "params": params, "body": body, "returnType": Nothing, "isExported": False, "exportName": Nothing}))
+def defDecl(name): return lambda params: lambda body: DefDecl(DefDeclData(name, params, body, Nothing, False, Nothing))
 
-def typeDecl(name): return lambda params: lambda constructors: TypeDecl(Record({"name": name, "params": params, "constructors": constructors, "isRecord": False, "recordFields": [], "isGadt": False}))
+def typeDecl(name): return lambda params: lambda constructors: TypeDecl(TypeDeclData(name, params, constructors, False, [], False))
 
-def constructor(name): return lambda fields: Record({"name": name, "fields": fields})
+def constructor(name): return lambda fields: Constructor(name, fields)
 
 def importDecl(module):
-    return ImportDecl(Record({"module": module, "alias": Nothing, "exposing": Nothing, "isPython": False}))
+    return ImportDecl(ImportDeclData(module, Nothing, Nothing, False))
 
 def pythonImport(module):
-    return ImportDecl(Record({"module": module, "alias": Nothing, "exposing": Nothing, "isPython": True}))
+    return ImportDecl(ImportDeclData(module, Nothing, Nothing, True))
 
-emptyModule = Record({"name": Nothing, "declarations": []})
+emptyModule = Module(Nothing, [])
 
 def addDecl(decl): return lambda mod: Record({**mod, "declarations": mod.declarations + [decl]})
 
