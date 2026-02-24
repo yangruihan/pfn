@@ -1,4 +1,4 @@
-.PHONY: help install dev test test-cov lint format check build clean run demo doc
+.PHONY: help install dev test test-cov lint format check build clean run demo doc bootstrap
 
 help:
 	@echo "Pfn - Pure Functional Native"
@@ -18,6 +18,7 @@ help:
 	@echo "  run         Run Hello World example"
 	@echo "  demo        Run full demo"
 	@echo "  doc         Serve documentation locally"
+	@echo "  bootstrap   Verify bootstrap (self-compilation)"
 
 PYTHON := .venv/bin/python3.13
 PYTEST := .venv/bin/pytest
@@ -91,6 +92,11 @@ demo:
 doc:
 	@echo "Serving docs at http://localhost:8000"
 	cd docs && $(PYTHON) -m http.server 8000
+
+bootstrap:
+	@echo "=== Pfn Bootstrap Verification ==="
+	@echo ""
+	PYTHONPATH=src $(PYTHON) scripts/bootstrap_test.py --verbose
 
 ci: check
 	@echo "CI passed!"
