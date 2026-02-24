@@ -21,8 +21,8 @@ def main() = distance(0.0, 0.0, 3.0, 4.0)
         module = Parser(tokens).parse()
         code = CodeGenerator().generate_module(module)
 
-        assert "import math" in code
-        assert "def distance(x1):" in code
+        assert "from math import *" in code
+        assert "def distance(x1, y1, x2, y2):" in code
         assert "math.sqrt" in code
 
     def test_multiple_imports(self):
@@ -37,8 +37,8 @@ def test() = "ok"
         module = Parser(tokens).parse()
         code = CodeGenerator().generate_module(module)
 
-        assert "import math" in code
-        assert "import json" in code
+        assert "from math import *" in code
+        assert "from json import *" in code
 
     def test_import_with_alias(self):
         """Python import with alias"""
@@ -66,7 +66,7 @@ def test() =
         module = Parser(tokens).parse()
         code = CodeGenerator().generate_module(module)
 
-        assert "import math" in code
+        assert "from math import *" in code
         assert "math.pi" in code
         assert "math.sin" in code
 
@@ -84,5 +84,5 @@ def isNearZero(x) =
         module = Parser(tokens).parse()
         code = CodeGenerator().generate_module(module)
 
-        assert "import math" in code
+        assert "from math import *" in code
         assert "math.abs" in code

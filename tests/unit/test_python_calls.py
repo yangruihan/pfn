@@ -14,7 +14,7 @@ def test() = math.sqrt(16.0)
         tokens = Lexer(source).tokenize()
         module = Parser(tokens).parse()
         code = CodeGenerator().generate_module(module)
-        assert "import math" in code
+        assert "from math import *" in code
         assert "math.sqrt(16.0)" in code
 
     def test_call_python_with_args(self):
@@ -39,7 +39,7 @@ def test() = os.path.join("a", "b")
         tokens = Lexer(source).tokenize()
         module = Parser(tokens).parse()
         code = CodeGenerator().generate_module(module)
-        assert "import os.path" in code
+        assert "from os.path import *" in code
         assert "os.path.join" in code
 
     def test_python_in_expression(self):
@@ -52,7 +52,7 @@ def hypot(a, b) = math.sqrt(a * a + b * b)
         tokens = Lexer(source).tokenize()
         module = Parser(tokens).parse()
         code = CodeGenerator().generate_module(module)
-        assert "import math" in code
+        assert "from math import *" in code
         assert "math.sqrt(a * a + b * b)" in code
 
     def test_nested_python_calls(self):
@@ -77,5 +77,5 @@ def len(x) = builtins.len(x)
         tokens = Lexer(source).tokenize()
         module = Parser(tokens).parse()
         code = CodeGenerator().generate_module(module)
-        assert "import builtins" in code
+        assert "from builtins import *" in code
         assert "builtins.len" in code

@@ -20,7 +20,7 @@ class TestPythonImport:
         tokens = Lexer("import python math").tokenize()
         module = Parser(tokens).parse()
         code = CodeGenerator().generate_module(module)
-        assert "import math" in code
+        assert "from math import *" in code
 
     def test_import_python_module_with_alias(self):
         tokens = Lexer("import python numpy as np").tokenize()
@@ -37,7 +37,7 @@ def main() = "test"
         tokens = Lexer(source).tokenize()
         module = Parser(tokens).parse()
         code = CodeGenerator().generate_module(module)
-        assert "import os.path" in code
+        assert "from os.path import *" in code
 
 
 class TestPythonCall:
@@ -50,7 +50,7 @@ def main() = math.sqrt(16.0)
         tokens = Lexer(source).tokenize()
         module = Parser(tokens).parse()
         code = CodeGenerator().generate_module(module)
-        assert "import math" in code
+        assert "from math import *" in code
         assert "math.sqrt(16.0)" in code
 
     def test_call_python_method(self):
@@ -81,6 +81,6 @@ def main() = distance(0.0, 0.0, 3.0, 4.0)
         module = Parser(tokens).parse()
         code = CodeGenerator().generate_module(module)
 
-        assert "import math" in code
-        assert "def distance(x1):" in code
+        assert "from math import *" in code
+        assert "def distance(x1, y1, x2, y2):" in code
         assert "math.sqrt" in code
