@@ -66,7 +66,9 @@ class CodeGenerator:
         ]
         for decl in module.declarations:
             lines.append(self._gen_decl(decl))
-        return "\n\n".join(lines)
+        code = "\n\n".join(lines)
+        # Note: Formatting disabled - original code has syntax errors that need fixing in codegen
+        return code
 
     def _gen_decl(self, decl: ast.Decl) -> str:
         if isinstance(decl, ast.DefDecl):
@@ -282,11 +284,19 @@ class CodeGenerator:
             return body_code
         if bindings:
             import re
-
-            for name, var_path in bindings.items():
-                pattern = r"\b" + re.escape(name) + r"\b"
-                body_code = re.sub(pattern, var_path, body_code)
-        return f"(lambda {let_var}: {body_code} if {pattern_check} else None)({value_code})"
+            valid_identifier = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+            param_names = list(bindings.keys())
+            if all(valid_identifier.match(name) for name in param_names):
+                var_paths = list(bindings.values())
+                inner_lambda = f"(lambda {', '.join(param_names)}: {body_code})"
+                call_args = ", ".join(var_paths)
+                body_code = f"{inner_lambda}({call_args})"
+            else:
+                for name, var_path in bindings.items():
+                    pattern = r"\b" + re.escape(name) + r"\b"
+                    body_code = re.sub(pattern, var_path, body_code)
+        # Wrap in extra parens to fix precedence issue with immediately-called lambdas
+        return f"(lambda {let_var}: ({body_code} if {pattern_check} else None))({value_code})"
 
     def _gen_let_func(self, expr: ast.LetFunc) -> str:
         import re
@@ -316,35 +326,36 @@ class CodeGenerator:
         scrutinee_code = self._gen_expr(expr.scrutinee)
         if not expr.cases:
             return "None"
-
-        result = "(lambda __match_val: "
-        parts = []
-        for case in expr.cases:
+        
+        # Generate each case with proper formatting
+        cases_code = []
+        for i, case in enumerate(expr.cases):
             pattern_check, bindings = self._gen_pattern_check(
                 case.pattern, "__match_val"
             )
             body_code = self._gen_expr_with_bindings(case.body, bindings)
-            parts.append((pattern_check, body_code))
-
-        # Build the chain - always include the first case's pattern check
-        if len(parts) == 1:
-            # Single case - still need to include pattern check
-            pattern_check, body_code = parts[0]
             if pattern_check == "True":
-                chain = body_code
+                cases_code.append(body_code)
             else:
-                chain = f"({body_code} if {pattern_check} else None)"
-        else:
-            # Multiple cases
-            chain = parts[-1][1]
-            for pattern_check, body_code in reversed(parts[:-1]):
-                if pattern_check == "True":
-                    chain = body_code
-                else:
-                    chain = f"({body_code} if {pattern_check} else {chain})"
+                # Wrap ternary in extra parens to avoid precedence issues with immediately-called lambdas
+                cases_code.append(f"(({body_code} if {pattern_check} else None))")
 
-        result += chain + ")({})".format(scrutinee_code)
-        return result
+        # Use 'or' chain for simpler code - avoids deeply nested 'if True else'
+        if len(cases_code) == 1:
+            chain = cases_code[0]
+        else:
+            # Filter out None cases and chain with 'or'
+            valid_cases = [c for c in cases_code if c != "None"]
+            if not valid_cases:
+                chain = "None"
+            elif len(valid_cases) == 1:
+                chain = valid_cases[0]
+            else:
+                # Use 'or' chain - returns first truthy result
+                chain = " or ".join(f"({c})" for c in valid_cases)
+
+        # Wrap entire lambda body in parens to fix precedence issue
+        return f"(lambda __match_val: ({chain}))({scrutinee_code})"
 
     def _gen_pattern_check(
         self, pattern: ast.Pattern, var: str
@@ -473,3 +484,71 @@ class CodeGenerator:
             value_code = self._gen_expr(binding.value)
             result = f"(lambda {binding.name}: {result})({value_code})"
         return result
+
+
+    def _format_code(self, code: str, max_line_length: int = 200) -> str:
+        """Format code by breaking long lines at safe points."""
+        lines = code.split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            # Only process lines that are too long
+            if len(line) <= max_line_length:
+                formatted_lines.append(line)
+                continue
+            
+            # Try to break at good points
+            broken = self._break_line(line, max_line_length)
+            formatted_lines.extend(broken)
+        
+        return '\n'.join(formatted_lines)
+    
+    def _break_line(self, line: str, max_length: int) -> list[str]:
+        """Break a long line at safe points."""
+        if len(line) <= max_length:
+            return [line]
+        
+        # Find a good break point
+        # Look for ),  or ,  at around max_length
+        search_start = max(0, max_length - 50)
+        search_end = min(len(line), max_length + 50)
+        
+        # Try to find a safe break point
+        break_point = -1
+        depth = 0
+        
+        for i in range(search_end - 1, search_start - 1, -1):
+            c = line[i]
+            
+            # Track parenthesis depth
+            if c == ')':
+                depth += 1
+            elif c == '(':
+                depth -= 1
+            
+            # Only break at depth 0 (outside parentheses)
+            # and after a comma or closing paren
+            if depth == 0 and i + 1 < len(line):
+                next_char = line[i + 1]
+                if c in ',)' and next_char not in ' 	':
+                    break_point = i + 1
+                    break
+                # Also break after )=  or ),
+                if c == ')' and next_char == '=':
+                    break_point = i + 1
+                    break
+        
+        if break_point == -1:
+            # No good break point found, just truncate
+            break_point = max_length
+        
+        first_line = line[:break_point].rstrip()
+        rest = line[break_point:].lstrip()
+        
+        # Add proper continuation - wrap rest in parens if it starts with binary operator
+        if rest.startswith('or ') or rest.startswith('and '):
+            rest = '(' + rest + ')'
+        
+        # Recursively break remaining lines
+        remaining = self._break_line(rest, max_length)
+        return [first_line] + remaining
