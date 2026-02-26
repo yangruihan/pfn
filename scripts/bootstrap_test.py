@@ -317,6 +317,23 @@ def verify_bootstrap_compilation(
         v1_content = v1_file.read_text()
         v2_content = v2_file.read_text()
 
+        # Normalize: remove timestamp line for comparison
+        import re
+        v1_normalized = re.sub(r'# Generated at: .*\n', '', v1_content)
+        v2_normalized = re.sub(r'# Generated at: .*\n', '', v2_content)
+
+        if v1_normalized != v2_normalized:
+            differences.append(f"{py_file}: content differs")
+
+    if differences:
+        import re
+        v1_normalized = re.sub(r'# Generated at: .*\n', '', v1_content)
+        v2_normalized = re.sub(r'# Generated at: .*\n', '', v2_content)
+
+        if v1_normalized != v2_normalized:
+            differences.append(f"{py_file}: content differs")
+        v2_content = v2_file.read_text()
+
         if v1_content != v2_content:
             differences.append(f"{py_file}: content differs")
 
