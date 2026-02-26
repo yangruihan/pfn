@@ -6,11 +6,31 @@ from pfn.parser import ast
 class CodeGenerator:
     def __init__(self):
         self._let_counter = 0
+        self._helper_funcs = []
+        self._helper_counter = 0
 
     def _fresh_let_var(self) -> str:
         var = f"__let_val_{self._let_counter}"
         self._let_counter += 1
         return var
+
+    def _fresh_helper_name(self) -> str:
+        name = f"__helper_{self._helper_counter}"
+        self._helper_counter += 1
+        return name
+
+    def _add_helper_func(self, name: str, params: list[str], body: str):
+        self._helper_funcs.append((name, params, body))
+
+    def _generate_helper_funcs(self) -> str:
+        if not self._helper_funcs:
+            return ""
+        lines = ["", "# Helper functions to avoid deep nesting"]
+        for name, params, body in self._helper_funcs:
+            param_str = ", ".join(params)
+            lines.append(f"def {name}({param_str}):")
+            lines.append(f"    return {body}")
+        return "\n".join(lines)
 
     PYTHON_KEYWORDS = {
         "lambda",
@@ -75,6 +95,10 @@ class CodeGenerator:
         ]
         for decl in module.declarations:
             lines.append(self._gen_decl(decl))
+        # Append helper functions to avoid deep nesting
+        helper_funcs = self._generate_helper_funcs()
+        if helper_funcs:
+            lines.append(helper_funcs)
         code = "\n\n".join(lines)
         # Note: Formatting disabled - original code has syntax errors that need fixing in codegen
         return code
@@ -302,8 +326,11 @@ class CodeGenerator:
                 for name, var_path in bindings.items():
                     pattern = r"\b" + re.escape(name) + r"\b"
                     body_code = re.sub(pattern, var_path, body_code)
-        # Wrap in extra parens to fix precedence issue with immediately-called lambdas
-        return f"(lambda {let_var}: ({body_code} if {pattern_check} else None))({value_code})"
+        # Use helper function with simple return to avoid nesting
+        helper_name = self._fresh_helper_name()
+        # Simple helper function without any nested lambdas
+        self._add_helper_func(helper_name, [let_var], f"{body_code} if {pattern_check} else None")
+        return f"{helper_name}({value_code})"
 
     def _gen_let_func(self, expr: ast.LetFunc) -> str:
         import re
@@ -344,25 +371,24 @@ class CodeGenerator:
             if pattern_check == "True":
                 cases_code.append(body_code)
             else:
-                # Wrap ternary in extra parens to avoid precedence issues with immediately-called lambdas
-                cases_code.append(f"(({body_code} if {pattern_check} else None))")
+                cases_code.append(f"({body_code} if {pattern_check} else None)")
 
-        # Use 'or' chain for simpler code - avoids deeply nested 'if True else'
+        # Use 'or' chain for simpler code
         if len(cases_code) == 1:
             chain = cases_code[0]
         else:
-            # Filter out None cases and chain with 'or'
             valid_cases = [c for c in cases_code if c != "None"]
             if not valid_cases:
                 chain = "None"
             elif len(valid_cases) == 1:
                 chain = valid_cases[0]
             else:
-                # Use 'or' chain - returns first truthy result
                 chain = " or ".join(f"({c})" for c in valid_cases)
 
-        # Wrap entire lambda body in parens to fix precedence issue
-        return f"(lambda __match_val: ({chain}))({scrutinee_code})"
+        # Use helper function to avoid nesting
+        helper_name = self._fresh_helper_name()
+        self._add_helper_func(helper_name, ["__match_val"], chain)
+        return f"{helper_name}({scrutinee_code})"
 
     def _gen_pattern_check(
         self, pattern: ast.Pattern, var: str
