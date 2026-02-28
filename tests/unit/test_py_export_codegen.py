@@ -13,8 +13,9 @@ class TestPythonExportCodegen:
         gen = CodeGenerator()
         code = gen.generate_module(module)
 
-        # Now generates uncurried Python function
-        assert "def add(x, y):" in code
+        # Now generates curried Python function
+        assert "def add(x):" in code
+        assert "lambda y:" in code
         assert "x + y" in code
 
     def test_single_param_function(self):

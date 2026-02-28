@@ -22,7 +22,10 @@ def main() = distance(0.0, 0.0, 3.0, 4.0)
         code = CodeGenerator().generate_module(module)
 
         assert "from math import *" in code
-        assert "def distance(x1, y1, x2, y2):" in code
+        assert "def distance(x1):" in code
+        assert "lambda y1:" in code
+        assert "lambda x2:" in code
+        assert "lambda y2:" in code
         assert "math.sqrt" in code
 
     def test_multiple_imports(self):

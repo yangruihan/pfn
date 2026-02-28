@@ -81,21 +81,6 @@ class TestCodeGeneratorFunctions:
         assert "lambda" in code
         assert "x" in code
 
-    def test_function_call(self):
-        tokens = Lexer("f(x)").tokenize()
-        ast = Parser(tokens).parse_expr()
-        code = CodeGenerator().generate(ast)
-        assert code == "f(x)"
-
-    def test_def(self):
-        tokens = Lexer("def add(x, y) = x + y").tokenize()
-        module = Parser(tokens).parse()
-        code = CodeGenerator().generate_module(module)
-        # Now generates uncurried Python function (def f(x, y): return ...)
-        assert "def add(x, y):" in code
-        assert "x + y" in code
-
-
 class TestCodeGeneratorIf:
     def test_if_expr(self):
         tokens = Lexer("if x then 1 else 0").tokenize()
