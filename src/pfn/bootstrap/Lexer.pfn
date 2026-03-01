@@ -253,7 +253,7 @@ def scanToken(state: LexerState) : LexerResult LexerState =
               else if isAlpha(char) || char == '_'
                 then if char == '_' && not(isAlnum(peek(state1)) || peek(state1) == '_')
                   then Ok (addSimpleToken(UNDERSCORE, spanFrom(startPos, startLine, startCol)(state1))(state1))
-                  else Ok (scanIdentifier(startPos, startLine, startCol)(state))
+                  else Ok (scanIdentifier(startPos, startLine, startCol)(state1))
                 -- Operators and punctuation
                 else scanOperator(char, startPos, startLine, startCol)(state1)
 

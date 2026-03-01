@@ -95,10 +95,15 @@ class CodeGenerator:
         ]
         for decl in module.declarations:
             lines.append(self._gen_decl(decl))
-        # Append helper functions to avoid deep nesting
+        # Insert helper functions AFTER imports but BEFORE declarations
         helper_funcs = self._generate_helper_funcs()
         if helper_funcs:
-            lines.append(helper_funcs)
+            # Find position after last import
+            insert_pos = len(lines)
+            for i, line in enumerate(lines):
+                if line.startswith('from ') or line.startswith('import '):
+                    insert_pos = i + 1
+            lines.insert(insert_pos, helper_funcs)
         code = "\n\n".join(lines)
         # Note: Formatting disabled - original code has syntax errors that need fixing in codegen
         return code
@@ -171,7 +176,8 @@ class CodeGenerator:
         lines.append(f"{decl.name} = Union[{', '.join(ctor_names)}]")
         for ctor in decl.constructors:
             if not ctor.fields:
-                lines.append(f"{ctor.name} = {ctor.name}()")
+                # Use _instance suffix for singleton instances to avoid conflict with class name
+                lines.append(f"_instance_{ctor.name.lower()} = {ctor.name}()")
         return "\n".join(lines)
 
     def _gen_import_decl(self, decl: ast.ImportDecl) -> str:
@@ -313,13 +319,12 @@ class CodeGenerator:
         then_code = self._gen_expr(expr.then_branch)
         else_code = self._gen_expr(expr.else_branch)
         return f"{then_code} if {cond_code} else {else_code}"
-
     def _gen_let(self, expr: ast.Let) -> str:
         value_code = self._gen_expr(expr.value)
         body_code = self._gen_expr(expr.body)
         safe_name = self._safe_name(expr.name)
-        # Use walrus operator (:=) instead of IIL for better readability
-        return f"(({body_code}) if ({safe_name} := ({value_code})) is not None else None)"
+        # Use IIL to avoid scope issues with nested lambdas
+        return f"(lambda {safe_name}: {body_code})({value_code})"
 
     def _gen_let_pattern(self, expr: ast.LetPattern) -> str:
         value_code = self._gen_expr(expr.value)
@@ -341,11 +346,8 @@ class CodeGenerator:
                 for name, var_path in bindings.items():
                     pattern = r"\b" + re.escape(name) + r"\b"
                     body_code = re.sub(pattern, var_path, body_code)
-        # Use helper function with simple return to avoid nesting
-        helper_name = self._fresh_helper_name()
-        # Simple helper function without any nested lambdas
-        self._add_helper_func(helper_name, [let_var], f"{body_code} if {pattern_check} else None")
-        return f"{helper_name}({value_code})"
+        # Use IIL instead of helper function to preserve scope
+        return f"(lambda {let_var}: {body_code} if {pattern_check} else None)({value_code})"
 
     def _gen_let_func(self, expr: ast.LetFunc) -> str:
         import re
@@ -376,7 +378,30 @@ class CodeGenerator:
         if not expr.cases:
             return "None"
         
-        # Generate each case with proper formatting
+        # For complex matches with multiple cases, use helper function to avoid deep nesting
+        if len(expr.cases) > 2:
+            # Generate unique helper function name
+            helper_name = self._fresh_helper_name()
+            
+            # Build the cases as a series of if-else
+            chain = "None"
+            for i, case in enumerate(expr.cases):
+                pattern_check, bindings = self._gen_pattern_check(
+                    case.pattern, "__match_val"
+                )
+                body_code = self._gen_expr_with_bindings(case.body, bindings)
+                if pattern_check == "True":
+                    chain = body_code
+                else:
+                    chain = f"({body_code} if {pattern_check} else {chain})"
+            
+            # Create helper function
+            helper_body = f"(lambda __match_val: {chain})(__match_val)"
+            self._add_helper_func(helper_name, ["__match_val"], helper_body)
+            
+            return f"{helper_name}({scrutinee_code})"
+        
+        # For simple matches, use inline approach
         cases_code = []
         for i, case in enumerate(expr.cases):
             pattern_check, bindings = self._gen_pattern_check(
@@ -388,7 +413,6 @@ class CodeGenerator:
             else:
                 cases_code.append(f"({body_code} if {pattern_check} else None)")
 
-        # Use 'or' chain for simpler code
         if len(cases_code) == 1:
             chain = cases_code[0]
         else:
@@ -400,10 +424,7 @@ class CodeGenerator:
             else:
                 chain = " or ".join(f"({c})" for c in valid_cases)
 
-        # Use helper function to avoid nesting
-        helper_name = self._fresh_helper_name()
-        self._add_helper_func(helper_name, ["__match_val"], chain)
-        return f"{helper_name}({scrutinee_code})"
+        return f"(lambda __match_val: {chain})({scrutinee_code})"
 
     def _gen_pattern_check(
         self, pattern: ast.Pattern, var: str

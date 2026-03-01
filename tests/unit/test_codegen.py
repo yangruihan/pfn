@@ -94,8 +94,8 @@ class TestCodeGeneratorLet:
         tokens = Lexer("let x = 5 in x").tokenize()
         ast = Parser(tokens).parse_expr()
         code = CodeGenerator().generate(ast)
-        # Now uses walrus operator (:=) instead of IIL
-        assert ":=" in code and "5" in code
+        # Uses IIL (immediately invoked lambda) instead of walrus operator
+        assert "lambda" in code and "5" in code
 
 
 class TestCodeGeneratorList:
