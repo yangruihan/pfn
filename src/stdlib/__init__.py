@@ -61,6 +61,11 @@ class String:
         return int(s)
     
     @staticmethod
+    def fromChar(c):
+        """Convert a character to a string."""
+        return str(c)
+    
+    @staticmethod
     def join(sep):
         def inner(parts):
             return sep.join(parts)
