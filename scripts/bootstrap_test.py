@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import subprocess
 import sys
@@ -58,9 +59,6 @@ def compile_with_python_compiler(
     pfn_file: Path, output_file: Path, project_root: Path
 ) -> BootstrapResult:
     """Compile a .pfn file using the Python compiler."""
-    # Use PYTHONPATH to include src directory
-    env = {"PYTHONPATH": str(project_root / "src")}
-
     cmd = [
         sys.executable,
         "-c",
@@ -99,19 +97,19 @@ print("OK")
 
 
 def compile_with_bootstrap_compiler(
-    pfn_file: Path, output_file: Path, bootstrap_dir: Path
+    pfn_file: Path, output_file: Path, bootstrap_pkg_dir: Path, project_root: Path
 ) -> BootstrapResult:
     """Compile a .pfn file using the bootstrap (compiled) compiler."""
-    # Use the bootstrap compiler from the given directory
+    stdlib_dir = project_root / "src" / "stdlib"
     cmd = [
         sys.executable,
         "-c",
         f"""
 import sys
-from pathlib import Path
-sys.path.insert(0, "{bootstrap_dir}")
-sys.path.insert(0, str(Path("{bootstrap_dir}").parent))
+sys.path.insert(0, "{bootstrap_pkg_dir}")
+sys.path.insert(0, "{stdlib_dir}")
 from bootstrap.Main import compile
+from pathlib import Path
 
 source = Path("{pfn_file}").read_text()
 result = compile(source)
@@ -181,7 +179,11 @@ def compile_all_bootstrap_files(
 
 
 def compile_all_with_bootstrap(
-    bootstrap_dir: Path, output_dir: Path, v1_dir: Path, verbose: bool = False
+    bootstrap_dir: Path,
+    output_dir: Path,
+    bootstrap_pkg_dir: Path,
+    project_root: Path,
+    verbose: bool = False,
 ) -> BootstrapResult:
     """Compile all bootstrap files using the bootstrap (v1) compiler."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -202,7 +204,9 @@ def compile_all_with_bootstrap(
         if verbose:
             print(f"  Compiling {pfn_file} with v1 compiler...")
 
-        result = compile_with_bootstrap_compiler(source_path, output_file, v1_dir)
+        result = compile_with_bootstrap_compiler(
+            source_path, output_file, bootstrap_pkg_dir, project_root
+        )
         if not result.success:
             return result
 
@@ -224,9 +228,6 @@ def run_bootstrap_tests(
     if not test_file.exists():
         return BootstrapResult(False, "Tests.py not found", {})
 
-    # Run the tests
-    env = {"PYTHONPATH": f"{project_root / 'src'}:{test_dir}"}
-
     cmd = [
         sys.executable,
         "-c",
@@ -235,7 +236,6 @@ import sys
 sys.path.insert(0, "{project_root / "src"}")
 sys.path.insert(0, "{test_dir}")
 
-# Import and run tests
 from Tests import main
 print(main)
 """,
@@ -248,9 +248,7 @@ print(main)
         if stderr:
             print("STDERR:", stderr)
 
-    # Check if tests passed
     if "passed" in stdout.lower():
-        # Extract pass count
         lines = stdout.strip().split("\n")
         for line in lines:
             if "passed" in line.lower():
@@ -289,12 +287,22 @@ def verify_bootstrap_compilation(
             False, f"Phase 1 failed: {result.message}", result.details
         )
 
-    # Step 2: Compile with the Python compiler (for now, until bootstrap works)
-    # TODO: Use v1 compiler when bootstrap compiler is fixed
-    if verbose:
-        print("\n[Phase 2] Compiling bootstrap with Python compiler (bootstrap compiler has codegen bugs)...")
+    # Create a proper bootstrap package for v1 compiler
+    bootstrap_pkg_dir = v1_dir / "bootstrap"
+    bootstrap_pkg_dir.mkdir(parents=True, exist_ok=True)
+    (bootstrap_pkg_dir / "__init__.py").write_text("# Bootstrap package\n")
+    for py_file in BOOTSTRAP_FILES:
+        src = v1_dir / py_file.replace(".pfn", ".py")
+        if src.exists():
+            shutil.copy(src, bootstrap_pkg_dir / py_file.replace(".pfn", ".py"))
 
-    result = compile_all_bootstrap_files(bootstrap_dir, v2_dir, project_root, verbose)
+    # Step 2: Compile with the v1 (bootstrap) compiler
+    if verbose:
+        print("\n[Phase 2] Compiling bootstrap with v1 (bootstrap) compiler...")
+
+    result = compile_all_with_bootstrap(
+        bootstrap_dir, v2_dir, bootstrap_pkg_dir, project_root, verbose
+    )
     if not result.success:
         return BootstrapResult(
             False, f"Phase 2 failed: {result.message}", result.details
@@ -318,32 +326,10 @@ def verify_bootstrap_compilation(
         v2_content = v2_file.read_text()
 
         # Normalize: remove timestamp line for comparison
-        import re
-        v1_normalized = re.sub(r'# Generated at: .*\n', '', v1_content)
-        v2_normalized = re.sub(r'# Generated at: .*\n', '', v2_content)
+        v1_normalized = re.sub(r"# Generated at: .*\n", "", v1_content)
+        v2_normalized = re.sub(r"# Generated at: .*\n", "", v2_content)
 
         if v1_normalized != v2_normalized:
-            differences.append(f"{py_file}: content differs")
-        v2_content = v2_file.read_text()
-
-        # Normalize: remove timestamp line for comparison
-        import re
-        v1_normalized = re.sub(r'# Generated at: .*\n', '', v1_content)
-        v2_normalized = re.sub(r'# Generated at: .*\n', '', v2_content)
-
-        if v1_normalized != v2_normalized:
-            differences.append(f"{py_file}: content differs")
-
-    if differences:
-        import re
-        v1_normalized = re.sub(r'# Generated at: .*\n', '', v1_content)
-        v2_normalized = re.sub(r'# Generated at: .*\n', '', v2_content)
-
-        if v1_normalized != v2_normalized:
-            differences.append(f"{py_file}: content differs")
-        v2_content = v2_file.read_text()
-
-        if v1_content != v2_content:
             differences.append(f"{py_file}: content differs")
 
     if differences:
@@ -391,7 +377,6 @@ def main():
     print(f"Found {len(BOOTSTRAP_FILES)} bootstrap files")
     print()
 
-    # Create temp directory
     temp_dir = Path(tempfile.mkdtemp(prefix="pfn_bootstrap_"))
 
     try:
