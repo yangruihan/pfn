@@ -100,14 +100,15 @@ def compile_with_bootstrap_compiler(
     pfn_file: Path, output_file: Path, bootstrap_pkg_dir: Path, project_root: Path
 ) -> BootstrapResult:
     """Compile a .pfn file using the bootstrap (compiled) compiler."""
-    stdlib_dir = project_root / "src" / "stdlib"
+    pfn_src_dir = str(project_root / "src")
+    bootstrap_parent = str(bootstrap_pkg_dir.parent)
     cmd = [
         sys.executable,
         "-c",
         f"""
 import sys
-sys.path.insert(0, "{bootstrap_pkg_dir}")
-sys.path.insert(0, "{stdlib_dir}")
+sys.path.insert(0, "{pfn_src_dir}")
+sys.path.insert(0, "{bootstrap_parent}")
 from bootstrap.Main import compile
 from pathlib import Path
 

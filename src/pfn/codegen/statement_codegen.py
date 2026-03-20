@@ -80,8 +80,16 @@ class StatementCodeGenerator:
             elif isinstance(e, ast.LetPattern):
                 walk(e.value)
                 self._collect_pattern_vars(e.pattern, vars_found)
-                vars_found.discard(e.name)  # Pattern binding shadows
+            elif isinstance(e, ast.LetPattern):
+                walk(e.value)
+                self._collect_pattern_vars(e.pattern, vars_found)
                 walk(e.body)
+
+            elif isinstance(e, ast.LetPattern):
+                walk(e.value)
+                self._collect_pattern_vars(e.pattern, vars_found)
+                walk(e.body)
+
             elif isinstance(e, ast.LetFunc):
                 walk(e.value)
                 vars_found.discard(e.name)  # Function name is bound
@@ -256,14 +264,60 @@ class StatementCodeGenerator:
             return f"({then_branch} if {cond} else {else_branch})"
         elif isinstance(expr, ast.Match):
             return self._gen_match_expr(expr)
-        elif isinstance(expr, ast.App):
+        VN|        elif isinstance(expr, ast.App):
+MK|            func = self._gen_expr(expr.func)
+VJ|            args = []
+SH|            for arg in expr.args:
+ZW|                arg_code = self._gen_expr(arg)
+ZM|                if arg_code is not None:
+KN|                    args.append(arg_code)
+ZR|                else:
+SS|                    args.append('None')
+YP|            # Generate curried calls: f(a)(b)(c) instead of f(a, b, c)
+BK|            # This matches the curried function definitions
+HB|            if len(args) > 1:
+NY|                result = func
+MK|                for arg in args:
+NW|                    result = f"({result})({arg})"
+HM|                return result
+HB|            elif len(args) == 1:
+MK|                return f"{func}({args[0]})"
+HN|            else:
+BK|                return f"{func}()"
+
             func = self._gen_expr(expr.func)
             args = [self._gen_expr(arg) for arg in expr.args]
             return f"{func}({', '.join(args)})"
         elif isinstance(expr, ast.BinOp):
             left = self._gen_expr(expr.left)
+        elif isinstance(expr, ast.BinOp):
+            left = self._gen_expr(expr.left)
             right = self._gen_expr(expr.right)
-            return f"({left} {expr.op} {right})"
+            op = expr.op
+            if op == "::":
+                return f"[{left}] + {right}"
+            if op == "++":
+                return f"{left} + {right}"
+            if op == "||":
+                return f"({left} or {right})"
+            if op == "&&":
+                return f"({left} and {right})"
+            return f"({left} {op} {right})"
+
+        elif isinstance(expr, ast.BinOp):
+            left = self._gen_expr(expr.left)
+            right = self._gen_expr(expr.right)
+            op = expr.op
+            if op == "::":
+                return f"[{left}] + {right}"
+            if op == "++":
+                return f"{left} + {right}"
+            if op == "||":
+                return f"({left} or {right})"
+            if op == "&&":
+                return f"({left} and {right})"
+            return f"({left} {op} {right})"
+
         elif isinstance(expr, ast.UnaryOp):
             operand = self._gen_expr(expr.operand)
             return f"({expr.op}{operand})"
@@ -595,3 +649,154 @@ class StatementCodeGenerator:
 
         stmts.append(Return(match_var))
         return stmts
+
+    def _gen_def_decl(self, decl: ast.DefDecl) -> str:
+        """Generate a function definition with statement-level body."""
+        safe_name = self._safe_name(decl.name)
+        
+        # Reset counters for this function
+        self._let_counter = 0
+        self._helper_funcs = []
+        self._helper_counter = 0
+        
+        # Convert body to statements
+        stmts = self._expr_to_statements(decl.body)
+        body_lines = statements_to_python(stmts, indent_level=1)
+        
+        # Generate function with statements inside
+        if len(decl.params) == 0:
+            # Simple value - just assign or return
+            if stmts and isinstance(stmts[0], Return):
+                return f"{safe_name} = {stmts[0].value}"
+            else:
+                return f"{safe_name} = {self._gen_expr(decl.body)}"
+        else:
+            # Function with params - use def with statement body
+            params_str = ", ".join(self._safe_name(p.name) for p in decl.params)
+            return f"def {safe_name}({params_str}):\n{body_lines}"
+
+    def generate_module(self, module: ast.Module, source_file: str = None) -> str:
+        """Generate complete Python module with statement-level code."""
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        source_info = f" from {source_file}" if source_file else ""
+        
+        lines = [
+            f"# ============================================================",
+            f"# AUTO-GENERATED CODE - DO NOT EDIT",
+            f"# Generated{source_info} by Pfn compiler",
+            f"# Generated at: {timestamp}",
+            f"# ============================================================",
+            "",
+            "from __future__ import annotations",
+            "from stdlib import String, List, Dict, Set, Maybe, Result, Just, Nothing, Ok, Err, Record",
+            "from stdlib import reverse, _not_",
+        ]
+        
+        for decl in module.declarations:
+            if isinstance(decl, ast.DefDecl):
+                lines.append(self._gen_def_decl(decl))
+            elif isinstance(decl, ast.TypeDecl):
+                # Handle type declarations
+                pass
+        
+    def generate_module(self, module: ast.Module, source_file: str = None) -> str:
+        """Generate complete Python module with statement-level code."""
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        source_info = f" from {source_file}" if source_file else ""
+        
+        lines = [
+            f"# ============================================================",
+            f"# AUTO-GENERATED CODE - DO NOT EDIT",
+            f"# Generated{source_info} by Pfn compiler",
+            f"# Generated at: {timestamp}",
+            f"# ============================================================",
+            "",
+            "from __future__ import annotations",
+            "from stdlib import String, List, Dict, Set, Maybe, Result, Just, Nothing, Ok, Err, Record",
+            "from stdlib import reverse, _not_",
+        ]
+        
+        for decl in module.declarations:
+            if isinstance(decl, ast.DefDecl):
+                code = self._gen_def_decl(decl)
+                if code:
+                    lines.append(code)
+            elif isinstance(decl, ast.TypeDecl):
+                code = self._gen_type_decl(decl)
+                if code:
+                    lines.append(code)
+            elif isinstance(decl, ast.ImportDecl):
+                code = self._gen_import_decl(decl)
+                if code:
+                    lines.append(code)
+        
+        return "\n\n".join(lines)
+    
+    def _gen_type_decl(self, decl: ast.TypeDecl) -> str:
+        """Generate type declaration."""
+        if decl.is_record:
+            return self._gen_record_type(decl)
+        return self._gen_sum_type(decl)
+    
+    def _gen_record_type(self, decl: ast.TypeDecl) -> str:
+        lines = ["from dataclasses import dataclass", ""]
+        lines.append("@dataclass")
+        lines.append(f"class {decl.name}:")
+        for field_name, field_type in decl.record_fields:
+            type_str = self._gen_type_ref(field_type)
+            lines.append(f"    {field_name}: {type_str}")
+        return "\n".join(lines)
+    
+    def _gen_sum_type(self, decl: ast.TypeDecl) -> str:
+        lines = ["from dataclasses import dataclass", "from typing import Union", ""]
+        for ctor in decl.constructors:
+            if ctor.fields:
+                lines.append("@dataclass")
+                lines.append(f"class {ctor.name}:")
+                for i, field_type in enumerate(ctor.fields):
+                    type_str = self._gen_type_ref(field_type)
+                    lines.append(f"    _field{i}: {type_str}")
+                lines.append("")
+            else:
+                lines.append(f"class {ctor.name}:")
+                lines.append("    _instance = None")
+                lines.append("    def __new__(cls):")
+                lines.append("        if cls._instance is None:")
+                lines.append("            cls._instance = super().__new__(cls)")
+                lines.append("        return cls._instance")
+                lines.append("")
+        ctor_names = [c.name for c in decl.constructors]
+        lines.append(f"{decl.name} = Union[{', '.join(ctor_names)}]")
+        for ctor in decl.constructors:
+            if not ctor.fields:
+                lines.append(f"_instance_{ctor.name.lower()} = {ctor.name}()")
+        return "\n".join(lines)
+    
+    def _gen_import_decl(self, decl: ast.ImportDecl) -> str:
+        """Generate import declaration."""
+        module = decl.module.replace("Bootstrap.", "bootstrap.")
+        if decl.alias:
+            return f"import {module} as {decl.alias}"
+        if decl.exposing:
+            if decl.exposing == [".."]:
+                return f"from {module} import *"
+            return f"from {module} import {', '.join(decl.exposing)}"
+        return f"import {module}"
+    
+    def _gen_type_ref(self, type_ref: ast.TypeRef) -> str:
+        """Generate type reference."""
+        if isinstance(type_ref, ast.SimpleTypeRef):
+            return type_ref.name
+        elif isinstance(type_ref, ast.FunTypeRef):
+            param = self._gen_type_ref(type_ref.param)
+            result = self._gen_type_ref(type_ref.result)
+            return f"{param} -> {result}"
+        elif isinstance(type_ref, ast.TupleTypeRef):
+            elements = ", ".join(self._gen_type_ref(e) for e in type_ref.elements)
+            return f"Tuple[{elements}]"
+        elif isinstance(type_ref, ast.RecordTypeRef):
+            fields = ", ".join(f"'{k}': {self._gen_type_ref(v)}" for k, v in type_ref.fields)
+            return f"Dict[str, Any]  # Record{{{fields}}}"
+        return "Any"
