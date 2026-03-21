@@ -179,8 +179,10 @@ class Parser:
         name = name_token.value
 
         params = []
+        has_parens = False  # Track if () was explicitly written
         while True:
             if self._match(TokenType.LPAREN):
+                has_parens = True  # Found explicit ()
                 if not self._check(TokenType.RPAREN):
                     params.append(self._parse_param())
                     while self._match(TokenType.COMMA):
@@ -207,6 +209,7 @@ class Parser:
             body=body,
             is_exported=is_exported,
             export_name=export_name,
+            has_parens=has_parens,
         )
 
     def _parse_param(self) -> ast.Param:
@@ -683,6 +686,8 @@ class Parser:
 
     def _parse_let_stop_on_pattern(self) -> ast.Expr:
         if self._match(TokenType.KW_LET):
+            # Note: let rec is not supported in this context
+            is_recursive = False
             bindings = []
             while True:
                 if self._check(TokenType.LPAREN):

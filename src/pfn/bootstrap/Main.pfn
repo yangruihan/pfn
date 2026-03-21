@@ -52,10 +52,10 @@ def compileAndPrint(source: String) : String =
     Err(e) -> "Error: " ++ e
 
 -- Example: compile a simple function
-def example : String =
+def example() : String =
   let source = "def add x y = x + y"
   in compileAndPrint(source)
 
 -- Main entry point
-def main : String =
-  "Pfn Bootstrap Compiler\n\n" ++ example
+def main() : String =
+  "Pfn Bootstrap Compiler\n\n" ++ example()

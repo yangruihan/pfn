@@ -8,6 +8,8 @@ class CodeGenerator:
         self._let_counter = 0
         self._helper_funcs = []
         self._helper_counter = 0
+        self._zero_param_funcs: set = set()  # Track zero-param functions for proper calling
+        self._current_module_decls: list = []  # Track current module declarations
 
     def _fresh_let_var(self) -> str:
         var = f"__let_val_{self._let_counter}"
@@ -18,6 +20,139 @@ class CodeGenerator:
         name = f"__helper_{self._helper_counter}"
         self._helper_counter += 1
         return name
+
+    MODULE_LEVEL_NAMES = {
+        "String", "List", "Dict", "Set", "Maybe", "Result", "Just", "Nothing", "Ok", "Err", "Record",
+        "reverse", "_not_",
+        "Ok", "Err", "Just", "Nothing", "UnitLit",
+    }
+
+    def _collect_free_vars(self, expr: ast.Expr, bound_vars: set = None) -> set:
+        """Collect free variables from an expression."""
+        if bound_vars is None:
+            bound_vars = set()
+        vars_found: set = set()
+
+        def walk(e: ast.Expr):
+            if isinstance(e, ast.Var):
+                if e.name not in bound_vars and e.name not in self.PYTHON_KEYWORDS and e.name not in self.MODULE_LEVEL_NAMES:
+                    vars_found.add(e.name)
+            elif isinstance(e, (ast.IntLit, ast.FloatLit, ast.StringLit, ast.CharLit, ast.BoolLit, ast.UnitLit)):
+                pass
+            elif isinstance(e, ast.Lambda):
+                old_bound = bound_vars.copy()
+                for param in e.params:
+                    bound_vars.add(param.name)
+                walk(e.body)
+                bound_vars.update(old_bound)
+            elif isinstance(e, ast.Let):
+                walk(e.value)
+                old_bound = bound_vars.copy()
+                bound_vars.add(e.name)
+                walk(e.body)
+                bound_vars.update(old_bound)
+            elif isinstance(e, ast.LetPattern):
+                walk(e.value)
+                self._collect_pattern_vars(e.pattern, bound_vars)
+                walk(e.body)
+            elif isinstance(e, ast.LetFunc):
+                walk(e.value)
+                old_bound = bound_vars.copy()
+                bound_vars.add(e.name)
+                for param in e.params:
+                    bound_vars.add(param.name)
+                walk(e.body)
+                bound_vars.update(old_bound)
+            elif isinstance(e, ast.DoNotation):
+                for binding in e.bindings:
+                    walk(binding.value)
+                    old_bound = bound_vars.copy()
+                    bound_vars.add(binding.name)
+                    walk(e.body)
+                    bound_vars.update(old_bound)
+            elif isinstance(e, ast.If):
+                walk(e.cond)
+                walk(e.then_branch)
+                walk(e.else_branch)
+            elif isinstance(e, ast.Match):
+                walk(e.scrutinee)
+                for case in e.cases:
+                    self._collect_pattern_vars(case.pattern, bound_vars)
+                    old_bound = bound_vars.copy()
+                    walk(case.body)
+                    bound_vars.update(old_bound)
+            elif isinstance(e, ast.App):
+                walk(e.func)
+                for arg in e.args:
+                    walk(arg)
+            elif isinstance(e, ast.BinOp):
+                walk(e.left)
+                walk(e.right)
+            elif isinstance(e, ast.UnaryOp):
+                walk(e.operand)
+            elif isinstance(e, ast.FieldAccess):
+                walk(e.expr)
+            elif isinstance(e, ast.RecordUpdate):
+                walk(e.record)
+                for field in e.updates:
+                    walk(field.value)
+            elif isinstance(e, ast.IndexAccess):
+                walk(e.expr)
+                walk(e.index)
+            elif isinstance(e, ast.Slice):
+                walk(e.expr)
+                if e.start:
+                    walk(e.start)
+                if e.end:
+                    walk(e.end)
+                if e.step:
+                    walk(e.step)
+            elif isinstance(e, ast.ListLit):
+                for elem in e.elements:
+                    walk(elem)
+            elif isinstance(e, ast.TupleLit):
+                for elem in e.elements:
+                    walk(elem)
+            elif isinstance(e, ast.RecordLit):
+                for field in e.fields:
+                    walk(field.value)
+            elif isinstance(e, ast.HandleExpr):
+                walk(e.expr)
+                for case in e.handler_cases:
+                    if case.params:
+                        old_bound = bound_vars.copy()
+                        for p in case.params:
+                            bound_vars.add(p.name)
+                        walk(case.body)
+                        bound_vars.update(old_bound)
+            elif isinstance(e, ast.PerformExpr):
+                for arg in e.args:
+                    walk(arg)
+
+        walk(expr)
+        return vars_found
+
+    def _collect_pattern_vars(self, pattern: ast.Pattern, vars_found: set):
+        """Collect variables bound by a pattern."""
+        if isinstance(pattern, ast.VarPattern):
+            vars_found.add(pattern.name)
+        elif isinstance(pattern, ast.ConsPattern):
+            self._collect_pattern_vars(pattern.head, vars_found)
+            self._collect_pattern_vars(pattern.tail, vars_found)
+        elif isinstance(pattern, ast.ListPattern):
+            for elem in pattern.elements:
+                self._collect_pattern_vars(elem, vars_found)
+            if pattern.rest:
+                self._collect_pattern_vars(pattern.rest, vars_found)
+        elif isinstance(pattern, ast.TuplePattern):
+            for elem in pattern.elements:
+                self._collect_pattern_vars(elem, vars_found)
+        elif isinstance(pattern, ast.RecordPattern):
+            for _, p in pattern.fields:
+                self._collect_pattern_vars(p, vars_found)
+        elif isinstance(pattern, ast.ConstructorPattern):
+            for arg in pattern.args:
+                self._collect_pattern_vars(arg, vars_found)
 
     def _add_helper_func(self, name: str, params: list[str], body: str):
         self._helper_funcs.append((name, params, body))
@@ -79,6 +214,8 @@ class CodeGenerator:
         return self._gen_expr(node)
 
     def generate_module(self, module: ast.Module, source_file: str = None) -> str:
+        # Reset tracking for each module
+        self._zero_param_funcs.clear()
         import datetime
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         source_info = f" from {source_file}" if source_file else ""
@@ -91,7 +228,7 @@ class CodeGenerator:
             "",
             "from __future__ import annotations",
             "from stdlib import String, List, Dict, Set, Maybe, Result, Just, Nothing, Ok, Err, Record",
-            "from stdlib import reverse, _not_",
+            "from stdlib import reverse, _not_, fst, snd",
         ]
         for decl in module.declarations:
             lines.append(self._gen_decl(decl))
@@ -122,7 +259,12 @@ class CodeGenerator:
         body_code = self._gen_expr(decl.body)
 
         if len(decl.params) == 0:
-            func_def = f"{safe_name} = {body_code}"
+            if decl.has_parens:
+                # def foo() = expr - generate a function
+                func_def = f"def {safe_name}():\n    return {body_code}"
+            else:
+                # def foo = expr - generate a value
+                func_def = f"{safe_name} = {body_code}"
         elif len(decl.params) == 1:
             params_str = self._safe_name(decl.params[0].name)
             func_def = f"def {safe_name}({params_str}):\n    return {body_code}"
@@ -384,20 +526,32 @@ class CodeGenerator:
             helper_name = self._fresh_helper_name()
             
             # Build the cases as a series of if-else
+            # Process cases in REVERSE order so the last case (wildcard) becomes the fallback
             chain = "None"
-            for i, case in enumerate(expr.cases):
+            for case in reversed(expr.cases):
                 pattern_check, bindings = self._gen_pattern_check(
                     case.pattern, "__match_val"
                 )
                 body_code = self._gen_expr_with_bindings(case.body, bindings)
+                # When pattern_check is "True" (wildcard), it should be the fallback
+                # Wrap the current chain as the else branch
                 if pattern_check == "True":
-                    chain = body_code
+                    chain = f"({body_code} if False else {chain})"
                 else:
                     chain = f"({body_code} if {pattern_check} else {chain})"
             
-            # Create helper function
+            # Collect free variables from the entire match expression
+            closure_vars: set = set()
+            closure_vars.update(self._collect_free_vars(expr))
+            
+            # Create helper function with closure parameters
+            helper_params = ["__match_val"] + sorted(closure_vars)
             helper_body = f"(lambda __match_val: {chain})(__match_val)"
-            self._add_helper_func(helper_name, ["__match_val"], helper_body)
+            self._add_helper_func(helper_name, helper_params, helper_body)
+            
+            # Call helper function with scrutinee and closure vars
+            call_args = [scrutinee_code] + sorted([f"{v}" for v in closure_vars])
+            return f"{helper_name}({', '.join(call_args)})"
             
             return f"{helper_name}({scrutinee_code})"
         
@@ -414,7 +568,13 @@ class CodeGenerator:
                 cases_code.append(f"({body_code} if {pattern_check} else None)")
 
         if len(cases_code) == 1:
-            chain = cases_code[0]
+            single_case = cases_code[0]
+            # For single non-wildcard cases, return scrutinee instead of None when no match
+            # This is critical for nested matches where scrutinee (like Nothing) should propagate
+            if " if False else None)" not in single_case:
+                chain = single_case.replace(" else None)", " else __match_val)")
+            else:
+                chain = single_case
         else:
             valid_cases = [c for c in cases_code if c != "None"]
             if not valid_cases:

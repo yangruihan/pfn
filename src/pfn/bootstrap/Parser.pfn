@@ -250,7 +250,26 @@ def parseParams(state: ParserState) : Result ParseError (List Param, ParserState
         Ok(([], advance(s1)))
       else
         parseParamList(s1, [])
-    Nothing -> Ok(([], state))
+    Nothing ->
+      -- Try parsing params without parentheses (until EQUALS or ARROW)
+      let (mIdent, s2) = matchToken(state, [IDENT])
+      in match mIdent with
+        Just(_) ->
+          -- First param consumed, collect it and continue
+          let name = getTokenString(current(state))
+              firstParam = { name: name, typeAnnotation: Nothing }
+          in parseParamsLoop(s2, [firstParam])
+        Nothing -> Ok(([], state))
+
+-- Parse parameters without parentheses
+def parseParamsLoop(state: ParserState, params: List Param) : Result ParseError (List Param, ParserState) =
+  let (mIdent, s1) = matchToken(state, [IDENT])
+  in match mIdent with
+    Just(_) ->
+      let name = getTokenString(current(state))
+          param = { name: name, typeAnnotation: Nothing }
+      in parseParamsLoop(s1, params ++ [param])
+    Nothing -> Ok((params, state))
 
 -- Parse parameter list inside parentheses
 def parseParamList(state: ParserState, params: List Param) : Result ParseError (List Param, ParserState) =
@@ -284,7 +303,8 @@ def parseReturnType(state: ParserState) : Result ParseError (Maybe TypeRef, Pars
   let (mArrow, s1) = matchToken(state, [ARROW])
   in match mArrow with
     Just(_) ->
-      match parseTypeRef(s1) with
+      let typeResult = parseTypeRef(s1)
+      in match typeResult with
         Ok((typeRef, s2)) -> Ok((Just(typeRef), s2))
         Err(e) -> Err(e)
     Nothing -> Ok((Nothing, state))

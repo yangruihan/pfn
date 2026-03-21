@@ -21,7 +21,7 @@ def generateAutogenHeader() : String =
   "# ============================================================\n\n" ++
   "from __future__ import annotations\n\n" ++
   "from stdlib import String, List, Dict, Set, Maybe, Result, Just, Nothing, Ok, Err, Record\n\n" ++
-  "from stdlib import reverse, _not_\n"
+  "from stdlib import reverse, _not_, fst, snd\n"
 
 -- Generate declarations
 def generateDecls(decls: List Decl, lines: List String) : String =

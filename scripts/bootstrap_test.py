@@ -11,8 +11,11 @@ This script verifies that the Pfn compiler can bootstrap itself:
 Usage:
     python scripts/bootstrap_test.py [--verbose] [--keep-temp]
 """
-
 from __future__ import annotations
+
+import sys
+# Increase recursion limit for deeply nested generated code
+sys.setrecursionlimit(50000)
 
 import argparse
 import re

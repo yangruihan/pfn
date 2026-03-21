@@ -302,7 +302,7 @@ class DefDecl(Decl):
     return_type: TypeRef | None = None
     is_exported: bool = False
     export_name: str | None = None
-
+    has_parens: bool = False  # True if defined with () like def foo() = expr
 
 @dataclass
 class TypeDecl(Decl):
