@@ -232,11 +232,20 @@ def generateLet(data: LetData) : String =
 
 -- ============ Let Function ============
 
+-- Generate let function with proper def statement for recursion
 def generateLetFunc(data: LetFuncData) : String =
   let paramsStr = String.join(", ", List.map(\p -> p.name, data.params))
   in let valueCode = generateExpr(data.value)
   in let bodyCode = generateExpr(data.body)
-  in "(lambda " ++ paramsStr ++ ": " ++ bodyCode ++ ")(" ++ valueCode ++ ")"
+  -- Use a unique temp name for the recursive function
+  in let funcName = "__rec_" ++ data.name
+  -- Replace self-references with the temp function name
+  in let valueCodeFixed = String.replace(data.name, funcName, valueCode)
+  in let bodyCodeFixed = String.replace(data.name, funcName, bodyCode)
+  -- Generate the def statement and wrap it in a lambda that returns the body
+  in let funcDef = "def " ++ funcName ++ "(" ++ paramsStr ++ "): return " ++ valueCodeFixed
+  -- Wrap in a lambda to make it an expression, using exec to define the function
+  in "(lambda: (" ++ funcDef ++ ") or " ++ bodyCodeFixed ++ ")()"
 
 -- ============ Match Expression ============
 

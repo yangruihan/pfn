@@ -1033,9 +1033,9 @@ class Parser:
                         if self._check(TokenType.EQUALS):
                             self.pos = saved_pos - 1
                             break
+                        # Create curried applications for each argument
                         for arg in elements:
                             expr = ast.App(func=expr, args=[arg])
-                        expr = self._parse_access_from(expr)
                     else:
                         self._expect(TokenType.RPAREN, "Expected ')'")
                         if self._check(TokenType.EQUALS):

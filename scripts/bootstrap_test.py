@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import sys
 # Increase recursion limit for deeply nested generated code
-sys.setrecursionlimit(50000)
+sys.setrecursionlimit(5000000)
 
 import argparse
 import re
@@ -110,6 +110,7 @@ def compile_with_bootstrap_compiler(
         "-c",
         f"""
 import sys
+sys.setrecursionlimit(5000000)
 sys.path.insert(0, "{pfn_src_dir}")
 sys.path.insert(0, "{bootstrap_parent}")
 from bootstrap.Main import compile
@@ -123,7 +124,7 @@ if isinstance(result, Ok):
 else:
     print(f"Error: {{result._field0}}")
     sys.exit(1)
-""",
+"""
     ]
 
     returncode, stdout, stderr = run_command(cmd)
