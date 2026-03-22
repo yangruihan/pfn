@@ -114,6 +114,7 @@ sys.setrecursionlimit(5000000)
 sys.path.insert(0, "{pfn_src_dir}")
 sys.path.insert(0, "{bootstrap_parent}")
 from bootstrap.Main import compile
+from stdlib import Ok, Err
 from pathlib import Path
 
 source = Path("{pfn_file}").read_text()

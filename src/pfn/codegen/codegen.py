@@ -674,12 +674,21 @@ class CodeGenerator:
                 check = f"{var} is {pattern.name}"
             else:
                 check = f"isinstance({var}, {pattern.name})"
-                for i, arg in enumerate(pattern.args):
-                    arg_var = f"{var}._field{i}"
-                    arg_check, arg_bindings = self._gen_pattern_check(arg, arg_var)
+                if len(pattern.args) == 1:
+                    # Single field - access directly
+                    arg_var = f"{var}._field0"
+                    arg_check, arg_bindings = self._gen_pattern_check(pattern.args[0], arg_var)
                     if arg_check != "True":
                         check = f"{check} and {arg_check}"
                     bindings.update(arg_bindings)
+                else:
+                    # Multiple fields - access as tuple from first field
+                    for i, arg in enumerate(pattern.args):
+                        arg_var = f"{var}._field0[{i}]"
+                        arg_check, arg_bindings = self._gen_pattern_check(arg, arg_var)
+                        if arg_check != "True":
+                            check = f"{check} and {arg_check}"
+                        bindings.update(arg_bindings)
             return check, bindings
         return "True", bindings
 
